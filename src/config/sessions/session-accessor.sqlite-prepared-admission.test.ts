@@ -332,8 +332,8 @@ it.each(cases)(
     expect(order).toEqual(["update", "later"]);
     if (workerProbe) {
       await workerProbe.expectHealthy({
-        executor: mode === "cold-preparation" ? 1 : 0,
-        reclamation: mode === "cold-commit" ? 1 : 0,
+        executor: mode === "warm" ? 0 : 1,
+        reclamation: 0,
         other: 0,
       });
     } else {
@@ -415,7 +415,7 @@ it("checks replacement commit authority before stale rows or worker admission", 
 
 it("keeps lifecycle commit denial before its stale-row check after admission", async () => {
   const f = fixture();
-  const probe = observeAdmission(f.databasePath);
+  const probe = observeWorkerAdmission(f.databasePath, "warm");
   const denied = new Error("synthetic lifecycle denied");
   const guard = vi.fn(() => {
     throw denied;
@@ -445,7 +445,7 @@ it("keeps lifecycle commit denial before its stale-row check after admission", a
   expect(buildEntry).toHaveBeenCalledOnce();
   expect(guard).toHaveBeenCalledOnce();
   expect(committed).not.toHaveBeenCalled();
-  probe.expectHealthy(1);
+  await probe.expectHealthy({ executor: 1, reclamation: 0, other: 0 });
   expect(loadSessionEntryReadOnly(f.input)?.label).toBe("newer");
 });
 
@@ -601,7 +601,7 @@ it.each([false, true])(
     registry.plugins.push(record);
     registry.agentHarnesses.push({ harness, pluginId: record.id, source: "runtime" });
     markPluginRegistryActive(registry);
-    const probe = observeAdmission(f.databasePath, true);
+    const probe = observeWorkerAdmission(f.databasePath, "cold");
     const work = own(
       withPluginRuntimeRegistryScope(registry, () =>
         applySessionEntryLifecycleMutation({
@@ -639,7 +639,7 @@ it.each([false, true])(
     expect(prepare).toHaveBeenCalledOnce();
     expect(commit).toHaveBeenCalledTimes(revoked ? 0 : 1);
     expect(rollback).not.toHaveBeenCalled();
-    probe.expectHealthy(1);
+    await probe.expectHealthy({ executor: 1, reclamation: 0, other: 0 });
     expect(loadSessionEntryReadOnly(f.input)?.sessionId).toBe(revoked ? "original" : undefined);
   },
 );
@@ -870,7 +870,7 @@ it.each([false, true])(
     registry.plugins.push(record);
     registry.agentHarnesses.push({ harness, pluginId: record.id, source: "runtime" });
     markPluginRegistryActive(registry);
-    const probe = observeAdmission(f.databasePath, true);
+    const probe = observeWorkerAdmission(f.databasePath, "cold");
     const work = own(
       withPluginRuntimeRegistryScope(registry, () =>
         finalizeSessionEntryMaintenancePlansAfterWriterReleaseBestEffort(f.scope, [plan]),
@@ -885,7 +885,7 @@ it.each([false, true])(
     await expect(work).resolves.toMatchObject({ capped: revoked ? 0 : 1 });
     expect(commit).toHaveBeenCalledTimes(revoked ? 0 : 1);
     expect(rollback).not.toHaveBeenCalled();
-    probe.expectHealthy(1);
+    await probe.expectHealthy({ executor: 1, reclamation: 0, other: 0 });
     if (revoked) {
       expect(loadSessionEntryReadOnly(f.stale)?.sessionId).toBe("old");
       expect(loadTranscriptEventsSync(f.stale)).toEqual(f.events);

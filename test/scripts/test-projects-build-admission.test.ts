@@ -1770,7 +1770,12 @@ describe("plugin batch build admission", () => {
 
   it.each([
     { name: "full QA", ids: ["qa-lab"], build: true, configs: [databaseConfig, qaConfig] },
-    { name: "shared config, channel only", ids: ["qa-channel"], build: false, configs: [qaConfig] },
+    {
+      name: "shared config, channel only",
+      ids: ["qa-channel"],
+      build: false,
+      configs: [databaseConfig, qaConfig],
+    },
     {
       name: "unrelated plugin",
       ids: ["firecrawl"],
@@ -1867,7 +1872,7 @@ describe("plugin batch build admission", () => {
       ids: ["qa-channel"],
       include: [lifecycle],
       build: false,
-      configs: [qaConfig],
+      configs: [databaseConfig, qaConfig],
     },
     {
       name: "cross-root CLI with include",
@@ -1875,7 +1880,7 @@ describe("plugin batch build admission", () => {
       args: [lifecycle],
       include: [lifecycle],
       build: true,
-      configs: [qaConfig],
+      configs: [combinedConfig],
     },
     {
       name: "include outside explicit target",

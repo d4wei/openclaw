@@ -481,7 +481,15 @@ export function createWorkerSessionTurnPlacementProvider(options: WorkerTurnLaun
               prepareAuthority: () => options.placements.prepareTurnClaimAuthority(turnClaim),
               signal: turn.abortSignal,
             },
-            (sessionTarget) => execute({ ...executionOptions, turn: { ...turn, sessionTarget } }),
+            async (sessionTarget) => {
+              const originalSessionTarget = turn.sessionTarget;
+              turn.sessionTarget = sessionTarget;
+              try {
+                return await execute(executionOptions);
+              } finally {
+                turn.sessionTarget = originalSessionTarget;
+              }
+            },
           );
         } catch (error) {
           if (

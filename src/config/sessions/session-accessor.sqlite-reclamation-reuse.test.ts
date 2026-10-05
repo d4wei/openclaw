@@ -155,7 +155,14 @@ test.each([
   const execution = captureOpenClawAgentDatabaseExecution({ ...options, path: database.path });
   let peerLease: string | undefined;
   try {
-    await execution.runExisting(source, async () => "opened");
+    const opening = execution.runExisting(source, async () => "opened");
+    if (proof === "revoked-during-open") {
+      await expect(opening).rejects.toThrow("Agent schema admission changed before publication");
+      await execution.release();
+      expect(loadSessionEntryReadOnly(scopes[0]!)).toMatchObject({ sessionId: "victim" });
+    } else {
+      await expect(opening).resolves.toBe("opened");
+    }
     if (proof.startsWith("two-leases")) {
       const before = readOpenClawAgentIntegrityVerification(database.path, options.env);
       peerLease = claimOpenClawAgentDatabaseLease({ ...options, path: database.path });

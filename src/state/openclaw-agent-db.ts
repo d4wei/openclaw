@@ -397,13 +397,16 @@ function* openOpenClawAgentDatabaseSteps(
       adoptOpenClawAgentDatabaseValidation(validationDatabase, validation);
     }
     let isValidatedReopen = Boolean(getOpenClawAgentDatabaseValidation(validationDatabase));
+    // Live worker admission already applied the foreign-lease integrity policy.
+    const reuseAdmittedIntegrity =
+      reuseIntegrity || (pending?.workerPrepared === true && !integrityRevoked);
     let reusedSchema = false;
     let walMaintenance: SqliteWalMaintenance;
     try {
       db.exec(`PRAGMA busy_timeout = ${OPENCLAW_SQLITE_BUSY_TIMEOUT_MS};`);
       reusedSchema = adoptOpenClawAgentDatabaseSchema(
         validationDatabase,
-        reuseIntegrity,
+        reuseAdmittedIntegrity,
         pending?.workerPrepared,
       );
       assertSupportedAgentSchemaVersion(db, pathname);
@@ -442,7 +445,7 @@ function* openOpenClawAgentDatabaseSteps(
         pathname,
         diagnostics,
         verification,
-        isValidatedReopen && reuseIntegrity,
+        isValidatedReopen && reuseAdmittedIntegrity,
         integrityRevoked && !diagnostics.because,
         reusedSchema,
       );
