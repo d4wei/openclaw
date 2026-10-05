@@ -23,13 +23,14 @@ import type { OpenClawAgentDatabaseOptions } from "./openclaw-agent-db-contract.
 import { agentDatabaseLifecycle } from "./openclaw-agent-db-lifecycle.js";
 import { registerOpenClawAgentDatabaseAsyncResource } from "./openclaw-agent-db-resources.js";
 import { resolveOpenClawAgentSqlitePath } from "./openclaw-agent-db.paths.js";
-import type {
-  AgentDatabaseExecutionFileIdentity,
-  AgentDatabaseExecutionScope,
-  AgentDatabaseFileExecutionOwner,
-  AgentDatabaseNativeGeneration,
-  AgentDatabaseRequestExecutionSource,
-  OpenClawAgentDatabaseExecution,
+import {
+  AgentDatabaseExecutionAdmissionClosedError,
+  type AgentDatabaseExecutionFileIdentity,
+  type AgentDatabaseExecutionScope,
+  type AgentDatabaseFileExecutionOwner,
+  type AgentDatabaseNativeGeneration,
+  type AgentDatabaseRequestExecutionSource,
+  type OpenClawAgentDatabaseExecution,
 } from "./openclaw-agent-execution-contract.js";
 import {
   createAgentDatabaseExecutionCapture,
@@ -211,7 +212,9 @@ function createAgentDatabaseExecution(
       executions.get(pathname) !== owner ||
       !supportsAgentDatabaseExecutionScope(executionOptions)
     ) {
-      throw new Error("Agent database execution admission is closed");
+      throw new AgentDatabaseExecutionAdmissionClosedError(
+        "Agent database execution admission is closed",
+      );
     }
     context.admission.assertCurrent();
     assertAgentAdmitted();
