@@ -2866,6 +2866,8 @@ export const en: TranslationMap & {
     waitingOnSubagent: "Waiting on {name}",
     waitingOnSession: "Waiting on 1 session",
     waitingOnSessionsCount: "Waiting on {count} sessions",
+    subagentsRunning: "{count} subagents running",
+    subagentsRunningOne: "1 subagent running",
     startupStatus: {
       retrying: "Retrying… {attempt}/{maxAttempts}",
       preparingWorkspace: "Preparing workspace…",

@@ -26,6 +26,8 @@ export function renderChatWorkingIndicator(
     workingPhrases?: readonly string[];
     waitingApproval?: boolean;
     waitingSubagents?: ChatSubagentWait;
+    /** Unfinished subagents to mention while the session itself is still working. */
+    runningSubagents?: number;
     onOpenSession?: (key: string) => void;
     startupLabel?: string;
     outputTokens?: number | null;
@@ -34,6 +36,8 @@ export function renderChatWorkingIndicator(
 ) {
   const waitingApproval = options.waitingApproval === true;
   const waitingSubagents = options.waitingSubagents;
+  // The wait already says who is left. Beside the session's own work a count is enough.
+  const runningSubagents = waitingSubagents ? 0 : (options.runningSubagents ?? 0);
   const child = waitingSubagents?.child;
   // Child sessions that are not subagents get a count and nothing else.
   const waitingSessions =
@@ -140,6 +144,20 @@ export function renderChatWorkingIndicator(
                   ></openclaw-working-phrase>
                 `
               : nothing
+        }
+        ${
+          runningSubagents > 0
+            ? html`
+                <span aria-hidden="true">·</span>
+                <span class="chat-working-indicator__subagents"
+                  >${
+                    runningSubagents === 1
+                      ? t("chat.subagentsRunningOne")
+                      : t("chat.subagentsRunning", { count: String(runningSubagents) })
+                  }</span
+                >
+              `
+            : nothing
         }
       </span>
     </div>
