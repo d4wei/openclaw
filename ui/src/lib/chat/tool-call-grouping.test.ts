@@ -35,6 +35,10 @@ describe("summarizeToolGroup", () => {
       summarizeToolGroup([prepared("search", "Find notes", { name: "custom_tool" }), ...launches]),
     ).toBe("1 other operation · 3 subagents");
     expect(summarizeToolGroup(launches.slice(0, 1))).toBe("1 subagent");
+    // A launch that opened a session in its own right is not a subagent.
+    expect(summarizeToolGroup(launches, { ownSessionLaunches: new Set(["story"]) })).toBe(
+      "1 other operation · 2 subagents",
+    );
   });
 
   it("replaces running state with the same operation's outcome without counting suppressed siblings", () => {

@@ -4055,6 +4055,7 @@ export const en: TranslationMap & {
       skippedCount: "{count} skipped",
       running: "Running",
       subagentRunning: "running",
+      subagentStopped: "stopped",
       openSubagent: "Open subagent session",
       completed: "Completed",
       blocked: "Blocked",

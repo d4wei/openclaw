@@ -278,9 +278,14 @@ function renderToolRowContent(
  */
 function renderSubagentRowContent(subagent: SpawnedSubagent, onOpen: (() => void) | undefined) {
   const session = subagent.session;
+  // How it ended matters more than how long it took.
   const state = session?.running
     ? t("chat.toolCards.subagentRunning")
-    : formatDurationCompact(session?.runtimeMs);
+    : session?.ended === "failed"
+      ? t("chat.toolCards.failed")
+      : session?.ended === "stopped"
+        ? t("chat.toolCards.subagentStopped")
+        : formatDurationCompact(session?.runtimeMs);
   return html`
     ${
       onOpen
@@ -297,7 +302,16 @@ function renderSubagentRowContent(subagent: SpawnedSubagent, onOpen: (() => void
           </button>`
         : html`<span class="chat-tool-row__title">${subagent.label}</span>`
     }
-    ${state ? html`<span class="chat-tool-row__subagent-state">${state}</span>` : nothing}
+    ${
+      state
+        ? html`<span
+            class="chat-tool-row__subagent-state ${
+              session?.ended === "failed" ? "chat-tool-row__subagent-state--failed" : ""
+            }"
+            >${state}</span
+          >`
+        : nothing
+    }
   `;
 }
 

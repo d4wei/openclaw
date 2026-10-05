@@ -46,12 +46,17 @@ export function selectActivityHeadline(
       pending.push(...child.children);
     }
   }
-  // A launched subagent is named by its label; its other launch settings are detail.
+  // A launched subagent is named by its label; its other launch settings are
+  // detail. A launch's call and result each carry a prepared item, so its card
+  // is found by call, not by which of the two the headline holds.
+  const callId = operation.toolCallId;
   let subagentLabel: string | undefined;
-  for (const [card, item] of preparedByCard) {
-    if (item === operation) {
-      subagentLabel = spawnedSubagentLabel(card);
-      break;
+  if (callId) {
+    for (const card of preparedByCard.keys()) {
+      subagentLabel = card.callId === callId ? spawnedSubagentLabel(card) : undefined;
+      if (subagentLabel) {
+        break;
+      }
     }
   }
   return operation.title.trim()

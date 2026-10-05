@@ -5,7 +5,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { AgentActivityItem } from "../../../../packages/gateway-protocol/src/schema/logs-chat.js";
 import type { GatewaySessionRow } from "../../api/types.ts";
 import type { ToolCard } from "../../lib/chat/chat-types.ts";
-import { resolveSpawnedSubagent, spawnedSubagentsRenderKey } from "./chat-spawned-subagent.ts";
+import {
+  ownSessionLaunchCalls,
+  resolveSpawnedSubagent,
+  spawnedSubagentsRenderKey,
+} from "./chat-spawned-subagent.ts";
 import { selectActivityHeadline } from "./components/chat-activity-headline.ts";
 import { renderToolCard } from "./components/chat-tool-cards.ts";
 
@@ -90,6 +94,35 @@ describe("a launched subagent", () => {
     expect(resolveSpawnedSubagent({ ...launch(), name: "exec" }, [story])).toBeNull();
   });
 
+  it("leaves a launch that opened a session in its own right an ordinary operation", () => {
+    const opened = child("opened", { key: "agent:main:dashboard:opened" });
+    // Asked for with `visible`, or answered with a session that is not a subagent.
+    const asked = launch({ callId: "asked", args: { label, task: "Write it.", visible: true } });
+    const answered = launch({ callId: "answered", outputText: accepted(opened.key) });
+    for (const card of [asked, answered]) {
+      expect(resolveSpawnedSubagent(card, [story, opened])).toBeNull();
+    }
+    expect(ownSessionLaunchCalls([asked, answered, launch(), { ...asked, name: "exec" }])).toEqual(
+      new Set(["asked", "answered"]),
+    );
+  });
+
+  it("says how a subagent ended when it did not finish its work", () => {
+    const ended = (status: GatewaySessionRow["status"]) =>
+      resolveSpawnedSubagent(launch({ outputText: accepted(story.key) }), [{ ...story, status }])
+        ?.session?.ended;
+    expect([ended("failed"), ended("timeout"), ended("killed"), ended("done")]).toEqual([
+      "failed",
+      "failed",
+      "stopped",
+      undefined,
+    ]);
+    // A launch row that only shows a duration must repaint when that changes.
+    expect(spawnedSubagentsRenderKey([{ ...story, status: "failed" }])).not.toBe(
+      spawnedSubagentsRenderKey([story]),
+    );
+  });
+
   it("repaints launch rows when a subagent starts or finishes, not when the roster reorders", () => {
     const puzzle = child("puzzle", { label: "Solve a tiny logic puzzle", ...running });
     const key = spawnedSubagentsRenderKey([story, puzzle]);
@@ -133,10 +166,14 @@ describe("a launched subagent", () => {
       .click();
     expect(onToggleExpanded).toHaveBeenCalledOnce();
 
-    expect(
-      mount([{ ...story, ...running }]).querySelector(".chat-tool-row__subagent-state")
-        ?.textContent,
-    ).toBe("running");
+    const state = (session: GatewaySessionRow) =>
+      mount([session]).querySelector(".chat-tool-row__subagent-state");
+    expect(state({ ...story, ...running })?.textContent).toBe("running");
+    // A subagent that failed says so instead of how long it lasted.
+    const failed = state({ ...story, status: "failed", runtimeMs: 291 });
+    expect(failed?.textContent).toBe("failed");
+    expect(failed?.classList.contains("chat-tool-row__subagent-state--failed")).toBe(true);
+    expect(state({ ...story, status: "killed" })?.textContent).toBe("stopped");
     // Without its session the row is the ordinary disclosure, still named.
     const unlinked = mount([]);
     expect(unlinked.querySelector(".chat-tool-row__subagent-link")).toBeNull();
@@ -161,5 +198,14 @@ describe("a launched subagent", () => {
     expect(
       selectActivityHeadline([item], [{ card, children: [] }], new Map([[card, item]])),
     ).toMatchObject({ title: label, name: "sessions_spawn" });
+    // The launch's result carries its own prepared item; the headline can hold either.
+    expect(
+      selectActivityHeadline([{ ...item }], [{ card, children: [] }], new Map([[card, item]])),
+    ).toMatchObject({ title: label });
+    // A session opened in its own right is not named like a subagent.
+    const opened = launch({ args: { ...(card.args as object), visible: true } });
+    expect(
+      selectActivityHeadline([item], [{ card: opened, children: [] }], new Map([[opened, item]])),
+    ).toMatchObject({ title: item.meta });
   });
 });

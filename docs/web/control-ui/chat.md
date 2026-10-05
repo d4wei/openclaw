@@ -61,10 +61,14 @@ starts a block of its own, with that run's own clock and closing line.
 
 In the tool activity, a subagent's launch row shows the label its launch gave
 it, when it gave one, rather than its instructions, followed by **running**
-while it works and by its duration once it has finished. Selecting the name
-opens that subagent's session; the rest of the row still expands the launch's
-details. Collapsed activity counts subagents on their own, such as **1 other
-operation · 3 subagents**.
+while it works and by its duration once it has finished. A subagent that failed
+or timed out reads **failed** instead, and one that was stopped reads
+**stopped**. Selecting the name opens that subagent's session; the rest of the
+row still expands the launch's details. Collapsed activity counts subagents on
+their own, such as **1 other operation · 3 subagents**. A launch that opens a
+child session in its own right, such as one asked for with `visible`, is not a
+subagent: its row and its place in that count stay those of an ordinary
+operation.
 
 The running count, the wait's count and name, and a launch row's state and link
 come from the session's subagent list. Until the pane has loaded it, the working

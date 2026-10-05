@@ -98,6 +98,11 @@ export function isCompleteAgentPreamble(item: { phase?: string; progressText?: s
   return !item.progressText?.trim() || (item.phase !== "start" && item.phase !== "update");
 }
 
+/**
+ * `ownSessionLaunches` names the `sessions_spawn` operations that opened a
+ * session in its own right. Prepared items do not carry the arguments that
+ * say so; a caller that has them keeps those launches out of the subagents.
+ */
 export function summarizeAgentActivity(
   items: readonly {
     itemId: string;
@@ -109,6 +114,7 @@ export function summarizeAgentActivity(
     hideFromChannelProgress?: boolean;
     suppressChannelProgress?: boolean;
   }[],
+  opts: { ownSessionLaunches?: ReadonlySet<string> } = {},
 ) {
   const operations = new Map(
     items
@@ -128,14 +134,19 @@ export function summarizeAgentActivity(
   };
   const outcomes = { failed: 0, blocked: 0, skipped: 0, unknown: 0 };
   let total = 0;
-  for (const item of operations.values()) {
+  for (const [operation, item] of operations) {
     if (item.hideFromChannelProgress) {
       continue;
     }
     // Prepared names describe operations, not successful effects or distinct
     // files. Free-form titles and metadata belong only in individual details.
     const name = normalizeLowercaseStringOrEmpty(item.name);
-    const category = item.commandBearing ? "commands" : (ACTIVITY_CATEGORIES.get(name) ?? "other");
+    const named = ACTIVITY_CATEGORIES.get(name) ?? "other";
+    const category = item.commandBearing
+      ? "commands"
+      : named === "subagents" && opts.ownSessionLaunches?.has(operation)
+        ? "other"
+        : named;
     counts[category] += 1;
     total += 1;
     if (item.status === "failed" || item.status === "blocked" || item.status === "skipped") {

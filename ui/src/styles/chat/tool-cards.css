@@ -193,6 +193,10 @@
   flex: none;
 }
 
+.chat-tool-row__subagent-state--failed {
+  color: var(--danger);
+}
+
 .chat-tool-row__subagent-link:hover,
 .chat-tool-row__subagent-link:focus-visible {
   text-decoration: underline;
