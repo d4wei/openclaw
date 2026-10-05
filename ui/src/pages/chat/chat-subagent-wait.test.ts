@@ -210,6 +210,14 @@ describe("chat waiting on subagents", () => {
       });
     expect(count()).toBe(2);
     expect(count({ subagentSessions: [{ ...child, hasActiveRun: false }] })).toBe(0);
+    // A child session opened in its own right is not a subagent.
+    expect(
+      count({ subagentSessions: [...roster, { ...child, key: "agent:main:dashboard:opened" }] }),
+    ).toBe(2);
+    // One on the ACP runtime is.
+    expect(
+      count({ subagentSessions: [...roster, { ...child, key: "agent:main:acp:coder" }] }),
+    ).toBe(3);
     expect(count({ subagentSessionsHydrated: false })).toBe(0);
     expect(count({ selectedSession: { ...working, hasActiveSubagentRun: false } })).toBe(0);
     expect(count({ selectedSession: undefined })).toBe(0);

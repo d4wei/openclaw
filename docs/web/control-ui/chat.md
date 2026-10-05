@@ -28,7 +28,7 @@ the row shows **Outcome unknown**. Partial output alone does not finish a tool.
 
 While a turn is still working and has subagents running, its working indicator
 ends with their count, such as **3 subagents running**, and counts down as they
-finish.
+finish. Child sessions that are not subagents are not part of that count.
 
 When a turn hands off with `sessions_yield` and its subagents are still active,
 the working indicator stays under that reply and reads **Waiting on 3

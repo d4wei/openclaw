@@ -69,13 +69,16 @@ function unfinishedChildren(session: GatewaySessionRow, roster: SubagentRoster) 
   });
 }
 
-/** Unfinished direct children to mention beside the session's own work; 0 when unknown. */
+/**
+ * Unfinished direct subagents to mention beside the session's own work; 0 when
+ * unknown. Child sessions opened in their own right are not subagents.
+ */
 export function countRunningSubagents(
   input: SubagentRoster & { selectedSession: GatewaySessionRow | undefined },
 ): number {
   const session = input.selectedSession;
   return session && !session.archived && session.hasActiveSubagentRun === true
-    ? unfinishedChildren(session, input).length
+    ? unfinishedChildren(session, input).filter((row) => !isDashboardSessionKey(row.key)).length
     : 0;
 }
 
