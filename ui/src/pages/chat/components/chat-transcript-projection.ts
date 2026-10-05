@@ -9,12 +9,7 @@ import { localParticipantIdentityKey } from "../../../lib/chat/sender-label.ts";
 import { chatItemGroups } from "../chat-agent-run-grouping.ts";
 import { messageRecoveryKey } from "../chat-message-recovery.ts";
 import { resolveTurnRecap, type TurnRecap } from "../chat-progress.ts";
-import {
-  countRunningSubagents,
-  placedSubagentWait,
-  resolveChatSubagentWait,
-  subagentStatusRenderKey,
-} from "../chat-subagent-wait.ts";
+import { projectSubagentStatus } from "../chat-subagent-wait.ts";
 import {
   assistantGroupCanOwnActiveRunStatus,
   buildCachedChatItems,
@@ -102,9 +97,8 @@ export function projectChatTranscript(props: ChatThreadProps, transcript: ChatTr
   const recoveryKey = (messageId: string) =>
     messageRecoveryKey(props.fullMessageAgentId, messageId);
   pruneTranscriptExpansions(expandedAssistantMessages, props);
-  const subagentWait = resolveChatSubagentWait(props);
-  const placedWait = searchFiltering ? undefined : placedSubagentWait(subagentWait);
-  const runningSubagents = countRunningSubagents(props);
+  const subagents = projectSubagentStatus(props, searchFiltering);
+  const subagentWait = subagents.wait;
   const chatItemsInput = {
     paneId: props.paneId,
     sessionKey: props.sessionKey,
@@ -134,7 +128,7 @@ export function projectChatTranscript(props: ChatThreadProps, transcript: ChatTr
     persistCommentary: props.persistCommentary,
     runWorking: Boolean(props.runWorking),
     runActive: Boolean(props.runActive),
-    subagentWait: placedWait,
+    subagentWait: subagents.placedWait,
     questionPrompts: props.questionPrompts,
     loading: props.loading,
     replyPeople: [...sessionPeople].toSorted(),
@@ -297,7 +291,7 @@ export function projectChatTranscript(props: ChatThreadProps, transcript: ChatTr
     startupLabel: props.startupLabel,
     waitingApproval: props.waitingApproval,
     waitingSubagents: subagentWait ?? undefined,
-    runningSubagents,
+    runningSubagents: subagents.running,
     onOpenSession: props.onOpenSession,
     runOutputTokens,
     questionPrompts,
@@ -335,6 +329,7 @@ export function projectChatTranscript(props: ChatThreadProps, transcript: ChatTr
       onToggleAssistantMessageExpanded: toggleAssistantMessageExpanded,
       isToolExpanded: (toolCardId: string) => expandedToolCards.get(toolCardId) ?? false,
       onToggleToolExpanded: toggleToolCardExpanded,
+      subagents: props,
       assistantName: props.assistantName,
       assistantAvatar: assistantIdentity.avatar,
       assistantTextAvatar: assistantIdentity.textAvatar,
@@ -373,8 +368,7 @@ export function projectChatTranscript(props: ChatThreadProps, transcript: ChatTr
   };
   // Only the working indicator shows live usage and subagent status, so rows
   // without one keep memoizing across usage and child-roster patches.
-  const subagentsKey = subagentStatusRenderKey(subagentWait, runningSubagents);
-  const workingUsageKey = JSON.stringify([runOutputTokens, subagentsKey]);
+  const workingUsageKey = JSON.stringify([runOutputTokens, subagents.statusKey]);
   const liveStatusSignature = (item: ChatRenderItem): string => {
     if (item.kind === "agent-run-frame") {
       const hasWorkingIndicator = item.parts.some(
@@ -547,7 +541,7 @@ export function projectChatTranscript(props: ChatThreadProps, transcript: ChatTr
       content: renderTurnRecapRow(turnRecap),
     });
   }
-  if (subagentWait && !placedWait && !searchFiltering) {
+  if (subagentWait && !subagents.placedWait && !searchFiltering) {
     transcriptRows.push({
       kind: "content",
       key: "waiting-subagents",
@@ -589,6 +583,8 @@ export function projectChatTranscript(props: ChatThreadProps, transcript: ChatTr
       : (props.transcriptVisible ?? true),
     // Invalidate settled rows when spawn metadata arrives, not on activity/title patches.
     avatarPlacement,
+    // Launch rows show each subagent's name, state and duration.
+    subagents.rowsKey,
     props.boardProvider,
     props.boardProvider?.canPinWidgets,
     props.boardProvider?.canPinMcpApps,
