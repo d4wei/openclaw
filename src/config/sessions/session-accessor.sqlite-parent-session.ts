@@ -43,6 +43,7 @@ import {
 } from "./session-accessor.sqlite-scope.js";
 import { appendTranscriptEventsInTransaction } from "./session-accessor.sqlite-transcript-store.js";
 import { preserveSqliteSameKeySessionRolloverLineage } from "./session-entry-lineage.js";
+import { captureIncognitoSessionOperation } from "./session-incognito-binding.js";
 import {
   forkParentEntryInWorker,
   forkParentTranscriptInWorker,
@@ -59,11 +60,27 @@ import { mergeSessionEntry } from "./types.js";
 
 // Parent-session fork owner: decision, transcript copy, and child entry commit.
 
+function captureParentForkBinding(scope: {
+  storePath: string;
+  sessionKey?: string;
+  agentId?: string;
+}) {
+  const binding = captureIncognitoSessionOperation(scope);
+  if (!binding) {
+    return undefined;
+  }
+  if (!scope.sessionKey) {
+    throw new Error("Incognito parent fork requires its captured parent session key");
+  }
+  return { source: { ...binding, sessionKey: scope.sessionKey } };
+}
+
 /** Prepare one source snapshot; the creation owner commits its copy with the child entry. */
 export async function prepareSessionForkTranscript(
   input: ForkSessionFromParentTranscriptParams,
   incognito?: IncognitoParentForkBinding,
 ) {
+  incognito ??= captureParentForkBinding({ ...input, sessionKey: input.parentSessionKey });
   if (!input.parentEntry.sessionId) {
     return { status: "missing-parent" as const };
   }
@@ -135,6 +152,7 @@ export async function forkSessionTranscriptFromParent(
   params: ForkSessionFromParentTranscriptParams,
   incognito?: IncognitoParentForkBinding,
 ): Promise<ForkSessionFromParentTranscriptResult> {
+  incognito ??= captureParentForkBinding({ ...params, sessionKey: params.parentSessionKey });
   if (incognito) {
     return forkParentTranscriptInWorker(params, incognito);
   }
@@ -390,6 +408,10 @@ export async function forkSessionEntryFromParentTargetWithPatch(
   patch?: ParentForkEntryPatch,
   incognito?: IncognitoParentForkBinding,
 ): Promise<ForkSessionEntryFromParentTargetResult> {
+  incognito ??= captureParentForkBinding({
+    ...params,
+    sessionKey: params.parentTarget.canonicalKey,
+  });
   if (incognito || supportsParentForkWorker({ ...params, sessionKey: "" })) {
     return forkParentEntryInWorker(params, patch, incognito);
   }
@@ -544,10 +566,12 @@ function persistSqliteParentForkSkipPatch(params: {
 export async function resolveSessionParentForkDecision(
   params: {
     parentEntry: SessionEntry;
+    parentSessionKey?: string;
     storePath: string;
   },
   incognito?: IncognitoParentForkBinding,
 ): Promise<SessionParentForkDecision> {
+  incognito ??= captureParentForkBinding({ ...params, sessionKey: params.parentSessionKey });
   const parentSessionId =
     typeof params.parentEntry.sessionId === "string" ? params.parentEntry.sessionId : "";
   if (parentSessionId.length === 0) {

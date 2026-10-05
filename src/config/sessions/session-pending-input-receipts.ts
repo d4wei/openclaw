@@ -5,6 +5,7 @@ import { captureOpenClawStateReadWorkerContext } from "../../state/openclaw-stat
 import type { listSessionPendingInputReceipts } from "./session-accessor.sqlite-pending-input-receipts.js";
 import { prepareSqliteScope, toDatabaseOptions } from "./session-accessor.sqlite-scope.js";
 import type { SessionAccessScope } from "./session-accessor.types.js";
+import { captureIncognitoSessionOperation } from "./session-incognito-binding.js";
 import {
   readIncognitoSessionHistory,
   type IncognitoSessionHistoryBinding,
@@ -18,6 +19,19 @@ export async function readSessionPendingInputReceiptsInWorker(
   options: { runIds: readonly string[] },
   incognito?: IncognitoSessionHistoryBinding,
 ): Promise<ReturnType<typeof listSessionPendingInputReceipts>> {
+  const capturedActor = !incognito && captureIncognitoSessionOperation(scope);
+  if (capturedActor) {
+    incognito = {
+      ...capturedActor,
+      target: {
+        sessionKey: scope.sessionKey,
+        sessionId: scope.sessionId,
+        lifecycleRevision: capturedActor.actor.sessions.readSharing(scope.sessionKey)?.entry
+          ?.lifecycleRevision,
+      },
+    };
+    scope = { ...scope, storePath: incognito.actor.path };
+  }
   if (incognito) {
     const result = await readIncognitoSessionHistory(incognito, scope, (target) => ({
       type: "session.history.receipts",

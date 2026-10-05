@@ -40,6 +40,7 @@ import {
   runSqliteSessionDeletionTransaction as runOpenClawAgentWriteTransaction,
   withSqliteSessionDeletions,
 } from "./session-accessor.sqlite-deletion.js";
+import { sqliteSessionEntriesEqual } from "./session-accessor.sqlite-entry-equality.js";
 import { readLifecycleTargetSnapshot } from "./session-accessor.sqlite-entry-store.js";
 import { emitArchivedTranscriptUpdates } from "./session-accessor.sqlite-events.js";
 import { publishCommittedSessionEntryRemoval } from "./session-accessor.sqlite-identity.js";
@@ -67,9 +68,11 @@ import {
   type ResolvedSqliteScope,
 } from "./session-accessor.sqlite-scope.js";
 import { kickSessionHistoryDiskBudgetMaintenance } from "./session-history-eviction.js";
+import { captureIncognitoSessionOperation } from "./session-incognito-binding.js";
 import { deleteIncognitoSessionLifecycle } from "./session-incognito-lifecycle-operations.js";
 import { resetSessionEntryInWorker } from "./session-reset.js";
 import { applySessionResetInDatabase } from "./session-reset.kernel.js";
+import { captureSessionTranscriptStorageEnvironment } from "./transcript-target-binding.js";
 import type { InternalSessionEntry as SessionEntry } from "./types.js";
 
 // Single-target lifecycle owner: reset, guarded delete, and trusted rollback.
@@ -545,7 +548,62 @@ export async function deleteSessionEntryLifecycle(
   if ("kind" in params) {
     return deleteIncognitoSessionLifecycle(params);
   }
-  return await deleteSqliteSessionEntryLifecycleInternal(params, false);
+  return (
+    deleteCapturedIncognitoSession(params) ??
+    deleteSqliteSessionEntryLifecycleInternal(params, false)
+  );
+}
+
+function deleteCapturedIncognitoSession(
+  params: DeleteSessionEntryLifecycleParams,
+  expectedPluginOwnerId?: string,
+): Promise<DeleteSessionEntryLifecycleResult> | undefined {
+  const binding = captureIncognitoSessionOperation({
+    ...params,
+    sessionKey: params.target.canonicalKey,
+  });
+  if (binding) {
+    params = {
+      ...params,
+      target: structuredClone(params.target),
+      expectedEntry: params.expectedEntry && structuredClone(params.expectedEntry),
+      env: captureSessionTranscriptStorageEnvironment(params.env ?? process.env),
+    };
+    const authority = {
+      assertCurrent() {
+        binding.authority.assertCurrent();
+        params.commitGuard?.();
+      },
+    };
+    return binding.actor.sessions.withSharedState(async () => {
+      const { entry } = await binding.actor.sessions.read(authority, {
+        sessionKey: params.target.canonicalKey,
+      });
+      if (
+        (params.expectedEntry && !sqliteSessionEntriesEqual(entry, params.expectedEntry)) ||
+        (params.expectedSessionId !== undefined &&
+          (entry?.sessionId ?? null) !== params.expectedSessionId) ||
+        (params.expectedLifecycleRevision !== undefined &&
+          entry?.lifecycleRevision !== params.expectedLifecycleRevision) ||
+        (params.expectedUpdatedAt !== undefined && entry?.updatedAt !== params.expectedUpdatedAt)
+      ) {
+        return { deleted: false, archivedTranscripts: [], expectedEntryMismatch: true as const };
+      }
+      if (!entry) {
+        return { deleted: false, archivedTranscripts: [] };
+      }
+      return deleteIncognitoSessionLifecycle({
+        actor: binding.actor,
+        authority,
+        env: params.env ?? process.env,
+        ownerStorePath: params.storePath,
+        target: { sessionKey: params.target.canonicalKey, entry },
+        reason: "deleted",
+        expectedPluginOwnerId,
+      });
+    });
+  }
+  return undefined;
 }
 
 /** Disk-budget owner: delete one exact archived row without recursively scheduling another pass. */
@@ -618,5 +676,8 @@ export async function rollbackPluginOwnedSessionEntryLifecycle(
   ) {
     throw new Error(MODEL_SELECTION_LOCK_REMOVAL_MESSAGE);
   }
-  return await deleteSqliteSessionEntryLifecycleInternal(params, true, expectedPluginOwner);
+  return (
+    deleteCapturedIncognitoSession(params, expectedPluginOwner) ??
+    deleteSqliteSessionEntryLifecycleInternal(params, true, expectedPluginOwner)
+  );
 }

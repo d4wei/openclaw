@@ -20,7 +20,6 @@ import {
   isIncognitoOpenClawAgentSqlitePath,
   resolveOpenClawAgentSqlitePath,
 } from "../../state/openclaw-agent-db.paths.js";
-import type { IncognitoAgentDatabaseExecution } from "../../state/openclaw-agent-execution-incognito.js";
 import { captureOpenClawAgentDatabaseExecution } from "../../state/openclaw-agent-execution.js";
 import { openOpenClawAgentSqliteWorkerStore } from "../../state/openclaw-agent-worker-store.js";
 import { getCliHistoryWriter } from "./cli-history-boundary.js";
@@ -63,6 +62,8 @@ import type { TranscriptReportWorkerTarget } from "./session-accessor.sqlite-tra
 import { resolveTranscriptAppendRefusal } from "./session-accessor.sqlite-transcript-write-guard.js";
 import { assertSessionEntryCurrentAdmission } from "./session-entry-current-admission.js";
 import type { SessionEntryCurrentCheck } from "./session-entry-current.types.js";
+import type { IncognitoSessionActor } from "./session-incognito-actor.js";
+import { captureIncognitoSessionOperation } from "./session-incognito-binding.js";
 import type { IncognitoSessionAuthority } from "./session-incognito-contract.js";
 import type { IncognitoTranscriptOperations } from "./session-incognito-transcript-contract.js";
 import {
@@ -87,12 +88,12 @@ import {
 const log = createSubsystemLogger("sessions/transcript-reports");
 
 export type IncognitoTranscriptReportBinding = {
-  actor: IncognitoAgentDatabaseExecution;
+  actor: IncognitoSessionActor;
   authority: IncognitoSessionAuthority;
 };
 
 /** Inactive composition: routing must supply the already captured actor at activation. */
-function withIncognitoReportWorker<T>(
+async function withIncognitoReportWorker<T>(
   scope: SessionTranscriptWriteScope,
   binding: IncognitoTranscriptReportBinding,
   run: Parameters<typeof withReportWorker<T>>[2],
@@ -129,7 +130,7 @@ function withIncognitoReportWorker<T>(
       expectedWriterRunId: fenced.expectedWriterRunId,
     },
   };
-  return actor.sessions.withSharedState(async () => {
+  const result = await actor.sessions.withSharedState(async () => {
     let prepared:
       | IncognitoTranscriptOperations["session.report.append"]["input"]["prepared"]
       | undefined;
@@ -207,6 +208,9 @@ function withIncognitoReportWorker<T>(
     }
     return result;
   });
+  assertCurrent();
+  actor.assertReadable();
+  return result;
 }
 
 async function settleReportOperation<T>(
@@ -507,6 +511,7 @@ export async function appendAbortedSessionTranscriptPartial(
   },
   incognito?: IncognitoTranscriptReportBinding,
 ): Promise<Result<AbortedSessionTranscriptPartialResult, TranscriptAppendRefusal>> {
+  incognito ??= captureIncognitoSessionOperation(scope);
   const publicationScope = {
     ...scope,
     ...(incognito
@@ -571,6 +576,7 @@ export async function readLatestSessionTranscriptReport(
   customTypes: readonly string[],
   incognito?: IncognitoTranscriptReportBinding,
 ): Promise<Result<CustomMessageReport | undefined, TranscriptAppendRefusal>> {
+  incognito ??= captureIncognitoSessionOperation(scope);
   const selectedTypes = [...customTypes];
   if (!incognito && isProcessHeldTranscript(scope)) {
     // Process-held incognito databases retain their sole native owner.
@@ -635,7 +641,8 @@ export async function appendSessionTranscriptReport(
     incognito?: IncognitoTranscriptReportBinding;
   },
 ): Promise<Result<void, TranscriptAppendRefusal>> {
-  if (!options?.incognito && isProcessHeldTranscript(scope)) {
+  const incognito = options?.incognito ?? captureIncognitoSessionOperation(scope);
+  if (!incognito && isProcessHeldTranscript(scope)) {
     if (options?.sessionEntryCurrent) {
       throw new Error("A file session source cannot authorize a process-held transcript report");
     }
@@ -663,7 +670,7 @@ export async function appendSessionTranscriptReport(
         return ok(undefined);
       },
       options?.sessionEntryCurrent,
-      options?.incognito,
+      incognito,
     );
   }
   const selection = {
@@ -705,6 +712,6 @@ export async function appendSessionTranscriptReport(
       throw new Error("Session transcript kept changing while selecting its report");
     },
     options?.sessionEntryCurrent,
-    options?.incognito,
+    incognito,
   );
 }
