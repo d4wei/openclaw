@@ -11,6 +11,13 @@ import {
   spawnedSubagentsRenderKey,
 } from "./chat-spawned-subagent.ts";
 import { selectActivityHeadline } from "./components/chat-activity-headline.ts";
+import { renderActivityGroup } from "./components/chat-message-group.ts";
+import {
+  createAssistantMessage,
+  createMessageEntry,
+  createToolCall,
+  createToolGroup,
+} from "./components/chat-message.test-support.ts";
 import { renderToolCard } from "./components/chat-tool-cards.ts";
 
 const parentKey = "agent:main:dashboard:11111111-1111-4111-8111-111111111111";
@@ -105,15 +112,54 @@ describe("a launched subagent", () => {
     expect(ownSessionLaunchCalls([asked, answered, launch(), { ...asked, name: "exec" }])).toEqual(
       new Set(["asked", "answered"]),
     );
+    // A subagent on the ACP runtime is a subagent before and after its result.
+    const coder = child("coder", { key: "agent:main:acp:coder" });
+    const acp = { label, task: "Write it.", runtime: "acp" };
+    expect(resolveSpawnedSubagent(launch({ args: acp }), [coder])).toEqual({ label });
+    expect(
+      resolveSpawnedSubagent(launch({ args: acp, outputText: accepted(coder.key) }), [coder])
+        ?.session?.key,
+    ).toBe(coder.key);
+  });
+
+  it("counts a launch that opened a session in its own right with the other operations", () => {
+    const calls = [
+      { id: "story", args: { label, task: "Write it." } },
+      { id: "opened", args: { label: "Opened", task: "Write it.", visible: true } },
+    ];
+    const activity = calls.map(({ id }): AgentActivityItem => ({
+      itemId: `tool:${id}`,
+      toolCallId: id,
+      kind: "tool",
+      phase: "end",
+      status: "completed",
+      name: "sessions_spawn",
+      title: "Sub-agent",
+    }));
+    const group = createToolGroup("launches", [
+      createMessageEntry(
+        "launches:entry",
+        createAssistantMessage(
+          calls.map(({ id, args }) => createToolCall(id, "sessions_spawn", args)),
+          { activity },
+        ),
+      ),
+    ]);
+    const container = document.createElement("div");
+    render(renderActivityGroup([group], { showToolCalls: true, showReasoning: false }), container);
+    expect(container.querySelector(".chat-activity-group__label")?.textContent).toBe(
+      "1 other operation · 1 subagent",
+    );
   });
 
   it("says how a subagent ended when it did not finish its work", () => {
     const ended = (status: GatewaySessionRow["status"]) =>
       resolveSpawnedSubagent(launch({ outputText: accepted(story.key) }), [{ ...story, status }])
         ?.session?.ended;
-    expect([ended("failed"), ended("timeout"), ended("killed"), ended("done")]).toEqual([
+    expect((["failed", "timeout", "killed", "interrupted", "done"] as const).map(ended)).toEqual([
       "failed",
       "failed",
+      "stopped",
       "stopped",
       undefined,
     ]);

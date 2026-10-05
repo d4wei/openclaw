@@ -5,7 +5,7 @@ import type { ToolCard } from "../../lib/chat/chat-types.ts";
 import { isSessionRunActive } from "../../lib/session-run-state.ts";
 import {
   areUiSessionKeysEquivalent,
-  isSubagentSessionKey,
+  isDashboardSessionKey,
 } from "../../lib/sessions/session-key.ts";
 
 /** The session's direct children as the pane holds them. */
@@ -38,42 +38,39 @@ type LaunchCard = Pick<ToolCard, "name" | "args" | "details" | "outputText">;
 const text = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value.trim() : undefined;
 
-// History keeps the result as text; only a live result still carries its details.
-function launchedSessionKey(card: LaunchCard): string | undefined {
-  return (
-    text(asRecord(card.details)?.childSessionKey) ??
-    text(safeParseJsonRecord(card.outputText ?? "")?.childSessionKey)
-  );
-}
-
 /**
- * A `sessions_spawn` call that opened a session in its own right: asked for
- * with `visible`, or answered with a session that is not a subagent. Such a
- * launch is an ordinary operation, not a subagent's.
+ * What one `sessions_spawn` call started. It opened a session in its own right,
+ * an ordinary operation and not a subagent's, when it was asked to with
+ * `visible` or was answered with a dashboard session.
  */
-function launchesOwnSession(card: LaunchCard): boolean {
+function readLaunch(card: LaunchCard) {
   if (card.name.trim().toLowerCase() !== "sessions_spawn") {
-    return false;
+    return null;
   }
-  const childKey = launchedSessionKey(card);
-  return (
-    asRecord(card.args)?.visible === true ||
-    (childKey !== undefined && !isSubagentSessionKey(childKey))
-  );
+  const args = asRecord(card.args);
+  // History keeps the result as text; only a live result still carries its details.
+  const childKey =
+    text(asRecord(card.details)?.childSessionKey) ??
+    text(safeParseJsonRecord(card.outputText ?? "")?.childSessionKey);
+  return {
+    label: text(args?.label),
+    childKey,
+    ownSession:
+      args?.visible === true || (childKey !== undefined && isDashboardSessionKey(childKey)),
+  };
 }
 
 /** The calls among `cards` that a count of subagents must leave out. */
 export function ownSessionLaunchCalls(cards: readonly ToolCard[]): Set<string> {
   return new Set(
-    cards.flatMap((card) => (card.callId && launchesOwnSession(card) ? [card.callId] : [])),
+    cards.flatMap((card) => (card.callId && readLaunch(card)?.ownSession ? [card.callId] : [])),
   );
 }
 
 /** The name a `sessions_spawn` call gave its subagent, shown instead of its assignment. */
 export function spawnedSubagentLabel(card: LaunchCard): string | undefined {
-  return card.name.trim().toLowerCase() === "sessions_spawn" && !launchesOwnSession(card)
-    ? text(asRecord(card.args)?.label)
-    : undefined;
+  const launch = readLaunch(card);
+  return launch && !launch.ownSession ? launch.label : undefined;
 }
 
 /** A subagent that handed off to its own subagents is still at work. */
@@ -107,11 +104,11 @@ export function resolveSpawnedSubagent(
   card: LaunchCard,
   rows: readonly GatewaySessionRow[] | undefined,
 ): SpawnedSubagent | null {
-  const label = spawnedSubagentLabel(card);
-  if (!label) {
+  const launch = readLaunch(card);
+  if (!launch?.label || launch.ownSession) {
     return null;
   }
-  const childKey = launchedSessionKey(card);
+  const { label, childKey } = launch;
   const row = childKey
     ? rows?.find((candidate) => areUiSessionKeysEquivalent(candidate.key, childKey))
     : undefined;
