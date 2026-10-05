@@ -169,7 +169,8 @@ it(
       });
       // chat.send acknowledges before dispatch reaches queue admission. Its source
       // run terminalizes after handoff, while the held first reply keeps it queued.
-      await expect(queuedRunTerminal.promise).resolves.toMatchObject({ state: "final" });
+      const queuedTerminal = await queuedRunTerminal.promise;
+      expect(queuedTerminal, JSON.stringify(queuedTerminal)).toMatchObject({ state: "final" });
       expect(context?.chatQueuedTurns.has("rpc-queued")).toBe(true);
       firstGate.resolve();
       await finalReached.promise;
