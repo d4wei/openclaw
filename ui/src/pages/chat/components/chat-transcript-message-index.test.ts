@@ -816,6 +816,29 @@ describe("subagent handoff", () => {
     );
   });
 
+  it("keeps operations on either side of a handoff in one row unless the agent spoke between", () => {
+    const logsOf = (messages: unknown[]) =>
+      framesOf(projectTranscriptChain(chatItems({ messages }), chainOptions)).flatMap((frame) =>
+        frame.parts.filter((part) => part.kind === "activity-run"),
+      );
+    const waitingRow = framesOf(waitingChain())[0]?.parts.find(
+      (part) => part.kind === "group" && part.messages.every((source) => source.message !== prose),
+    );
+    const resumedRow = readRow("read-2", "announce:resume", 7);
+    const logs = logsOf([...waiting, resumedRow, answer]);
+    expect(logs).toHaveLength(1);
+    // The row the reader may have opened while waiting keeps its identity.
+    expect(logs[0]).toMatchObject({ key: `activity:${waitingRow?.key}` });
+    expect(logs[0]?.groups.map((group) => group.runId)).toEqual(["run-1", "announce:resume"]);
+    const spoke = {
+      role: "assistant",
+      content: "Two finished; checking the third.",
+      timestamp: 45,
+      __openclaw: { id: "spoke", seq: 6, runId: "announce:resume" },
+    };
+    expect(logsOf([...waiting, spoke, resumedRow, answer])).toEqual([]);
+  });
+
   it("keeps a later request apart from the block that handed off", () => {
     const chain = projectTranscriptChain(
       chatItems({

@@ -6,11 +6,12 @@ import {
   assistantMessageIsInterrupted,
   resolveAssistantReplyPhase,
 } from "./chat-assistant-reply.ts";
-import type {
-  ActivityRunRenderItem,
-  CompletedTurnRenderItem,
-  StreamRunRenderItem,
-  WorkGroupRenderItem,
+import {
+  joinActivityRuns,
+  type ActivityRunRenderItem,
+  type CompletedTurnRenderItem,
+  type StreamRunRenderItem,
+  type WorkGroupRenderItem,
 } from "./chat-thread-grouping.ts";
 import {
   chatItemStartsDisplayTurn,
@@ -201,11 +202,24 @@ export function coalesceAgentRunFrames(
   // row; `resuming` lets exactly the next run in.
   let opened: { runId: string; boundaryId: string | undefined } | undefined;
   let resuming = false;
+  // No row marks a handoff, so operations on either side of one are one log.
+  let afterHandoff = false;
+  const addPart = (item: AgentRunFramePart) => {
+    const last = parts.at(-1);
+    const joined = afterHandoff && last ? joinActivityRuns(last, item) : undefined;
+    afterHandoff = false;
+    if (joined) {
+      parts[parts.length - 1] = joined;
+    } else {
+      parts.push(item);
+    }
+  };
   const flush = (failed = false) => {
     const frameRunId = opened?.runId ?? runId;
     const openedBoundaryId = opened ? opened.boundaryId : boundaryId;
     opened = undefined;
     resuming = false;
+    afterHandoff = false;
     if (!runId || !frameRunId || parts.length === 0) {
       return;
     }
@@ -250,6 +264,7 @@ export function coalesceAgentRunFrames(
     if (item.kind === "notice" && item.handoffBoundary && runId && parts.length > 0) {
       opened ??= { runId, boundaryId };
       resuming = true;
+      afterHandoff = true;
       continue;
     }
     if (!isAgentRunFramePart(item)) {
@@ -277,7 +292,7 @@ export function coalesceAgentRunFrames(
     if (resuming && !candidateRunId && item.kind === "stream-run" && !candidateBoundaryId) {
       // The resumed run can be working before the pane learns its run id. Its
       // status belongs here already, so the block does not split and rejoin.
-      parts.push(item);
+      addPart(item);
       continue;
     }
     if (resuming && candidateRunId && candidateRunId !== runId) {
@@ -322,7 +337,7 @@ export function coalesceAgentRunFrames(
       flush();
     }
     runId = candidateRunId;
-    parts.push(item);
+    addPart(item);
     if (failed) {
       flush(true);
       boundaryId = undefined;
