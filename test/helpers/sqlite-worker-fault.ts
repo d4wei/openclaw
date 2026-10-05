@@ -24,7 +24,7 @@ export function useSqliteWorkerFault(rules: readonly SqliteWorkerFault[]) {
         if (options?.eval) {
           return create(filename, options);
         }
-        const entry = filename instanceof URL ? filename : pathToFileURL(filename);
+        const entry = typeof filename === "string" ? pathToFileURL(filename) : filename;
         const key = "openclaw.test.sqliteWorkerFault";
         const previous = getEnvironmentData(key);
         setEnvironmentData(key, {
