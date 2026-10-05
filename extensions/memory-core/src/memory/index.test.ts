@@ -15,9 +15,9 @@ import { resolveOpenClawAgentSqlitePath } from "openclaw/plugin-sdk/sqlite-runti
 import {
   closeOpenClawAgentDatabasesForTest,
   openOpenClawAgentDatabase,
+  useSqliteWorkerFault,
 } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import { describe, expect, it, vi } from "vitest";
-import { useSqliteWorkerFault } from "../../../../test/helpers/sqlite-worker-fault.js";
 import { writeMemoryIndexArchiveTranscript } from "./index-archive.test-support.js";
 import { createManagerIndexFixture } from "./manager-index.test-support.js";
 import type { MemoryTargetedSessionSyncQueue } from "./manager-sync-control.js";
