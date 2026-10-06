@@ -144,17 +144,20 @@ export function summarizeAgentActivity(
     // files. Free-form titles and metadata belong only in individual details.
     const name = normalizeLowercaseStringOrEmpty(item.name);
     const named = ACTIVITY_CATEGORIES.get(name) ?? "other";
-    const startedNothing =
-      item.status === "failed" || item.status === "blocked" || item.status === "skipped";
+    // An operation that ended one of these ways; a launch that did started nothing.
+    const outcome =
+      item.status === "failed" || item.status === "blocked" || item.status === "skipped"
+        ? item.status
+        : undefined;
     const category = item.commandBearing
       ? "commands"
-      : named === "subagents" && (startedNothing || opts.ownSessionLaunches?.has(operation))
+      : named === "subagents" && (outcome || opts.ownSessionLaunches?.has(operation))
         ? "other"
         : named;
     counts[category] += 1;
     total += 1;
-    if (item.status === "failed" || item.status === "blocked" || item.status === "skipped") {
-      outcomes[item.status] += 1;
+    if (outcome) {
+      outcomes[outcome] += 1;
     } else if (!item.status) {
       outcomes.unknown += 1;
     }
