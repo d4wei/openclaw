@@ -6,10 +6,10 @@ import { clearRuntimeConfigSnapshot, setRuntimeConfigSnapshot } from "../../../c
 import type { OpenClawConfig } from "../../../config/types.openclaw.js";
 import { createDeferredCore } from "../../../shared/deferred.js";
 import { writeConfigMachineState } from "../../../state/config-machine-state-write.js";
+import { closeOpenClawAgentDatabases } from "../../../state/openclaw-agent-db-lifecycle.js";
 import {
   closeOpenClawAgentDatabaseByPath,
   closeOpenClawAgentDatabaseByPathAsync,
-  closeOpenClawAgentDatabases,
   getOpenClawAgentDatabaseIfOpen,
   openOpenClawAgentDatabase,
 } from "../../../state/openclaw-agent-db.js";
@@ -577,12 +577,13 @@ it.each(["local-agent", "legacy-main"] as const)(
         const publication = vi
           .spyOn(snapshots, "noteRuntimeAuthProfileStorePersistedMutation")
           .mockImplementation((...args) => {
-            original(...args);
+            const revision = original(...args);
             if (args[2]?.databasePath === database.path && args[1].stateChanged) {
               commits++;
               closing ??= closeOpenClawAgentDatabaseByPathAsync(database.path, database.agentId);
               void closing.catch(() => {});
             }
+            return revision;
           });
         try {
           await expect(
