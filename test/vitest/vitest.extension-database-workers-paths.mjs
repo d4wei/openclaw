@@ -6,6 +6,13 @@ export const databaseWorkerExtensionTestRoots = [
 ];
 
 export const databaseWorkerExtensionTestFiles = [
+  "extensions/qa-lab/src/codex-plugin-lifecycle.test.ts",
+  "extensions/qa-lab/src/gateway-child-artifacts.test.ts",
+  "extensions/qa-lab/src/gateway-child-auth-handoff.test.ts",
+  "extensions/qa-lab/src/gateway-child-auth-profiles.test.ts",
+  "extensions/qa-lab/src/gateway-child-lifecycle.test.ts",
+  "extensions/qa-lab/src/gateway-child.test.ts",
+  "extensions/qa-lab/src/providers/shared/auth-store.test.ts",
   "extensions/codex/src/app-server/auth-refresh-authority.integration.test.ts",
   "extensions/agentsapi/agentsapi-attempt.test.ts",
   "extensions/agentsapi/agentsapi-harness.persistence.test.ts",
