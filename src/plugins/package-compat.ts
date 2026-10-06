@@ -61,8 +61,9 @@ function satisfiesSemverRange(version: string, range: string): boolean {
   return tokens.every((token) => satisfiesComparator(version, token));
 }
 
+// `deciq.N` names a patch series built on the release, so it satisfies that release's ranges.
 const OPENCLAW_RELEASE_SUFFIX_PATTERN =
-  /^[vV]?(\d{4}\.[1-9]\d?\.[1-9]\d*)(?:-\d+|-(?:alpha|beta|rc)\.\d+)$/i;
+  /^[vV]?(\d{4}\.[1-9]\d?\.[1-9]\d*)(?:-\d+|-(?:alpha|beta|rc|deciq)\.\d+)$/i;
 const OPENCLAW_NUMERIC_CORRECTION_PATTERN = /^[vV]?(\d{4}\.[1-9]\d?\.[1-9]\d*)-\d+$/;
 
 function normalizeOpenClawNumericCorrectionForPluginApi(

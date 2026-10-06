@@ -24,6 +24,8 @@ describe("package plugin API compatibility", () => {
     expect(satisfiesPluginApiRange("2026.5.3-beta.1", ">=2026.5.3")).toBe(true);
     expect(satisfiesPluginApiRange("2026.5.3-alpha.1", ">=2026.5.3")).toBe(true);
     expect(satisfiesPluginApiRange("2026.5.3-rc.1", ">=2026.5.3")).toBe(true);
+    expect(satisfiesPluginApiRange("2026.9.8-deciq.1", ">=2026.9.8")).toBe(true);
+    expect(satisfiesPluginApiRange("2026.9.8-deciq.1", ">=2026.9.9")).toBe(false);
     expect(satisfiesPluginApiRange("2026.5.2-beta.1", ">=2026.5.3")).toBe(false);
   });
 
