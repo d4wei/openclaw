@@ -17,9 +17,9 @@ const MAX_PACKAGED_CHANGELOG_BYTES = 500 * 1024;
 const MIN_RELEASE_SECTION_BODY_BYTES = 32;
 const UNRELEASED_HEADING = "Unreleased";
 const RELEASE_VERSION_PATTERN =
-  /^([0-9]{4}\.[1-9][0-9]*\.[1-9][0-9]*)(?:(?:-(?:alpha|beta)\.[1-9][0-9]*)|(?:-[1-9][0-9]*))?$/u;
+  /^([0-9]{4}\.[1-9][0-9]*\.[1-9][0-9]*)(?:(?:-(?:alpha|beta|deciq)\.[1-9][0-9]*)|(?:-[1-9][0-9]*))?$/u;
 const PRERELEASE_VERSION_PATTERN =
-  /^([0-9]{4}\.[1-9][0-9]*\.[1-9][0-9]*)-(?:alpha|beta)\.[1-9][0-9]*$/u;
+  /^([0-9]{4}\.[1-9][0-9]*\.[1-9][0-9]*)-(?:alpha|beta|deciq)\.[1-9][0-9]*$/u;
 
 /**
  * Resolves acceptable changelog headings for a package version.
