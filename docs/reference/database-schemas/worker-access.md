@@ -1438,6 +1438,9 @@ to recheck retained host authority during transaction validation and before comm
 Observer acceptance retains the original database generation and writer FIFO through
 its synchronous consumer. A native mutation witness rejects intervening synchronous
 SDK rewrites, and database closure revokes pending reads before disclosure.
+Background digest persistence enters the observer's own work scope outside the
+publisher's async context, so its writes acquire their own FIFO admission instead
+of borrowing the synchronous reader's permit.
 Gateway close rejects new observation work and joins accepted
 reads and digest persistence before closing database workers. Accepted persistence
 does not inherit scheduler cancellation, and failed write replies never authorize
