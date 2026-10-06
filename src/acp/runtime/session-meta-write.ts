@@ -32,13 +32,13 @@ export async function upsertAcpSessionMeta(
   params: AcpSessionMutationParams,
   incognito?: { actor: IncognitoSessionActor; authority: IncognitoSessionAuthority },
 ): Promise<SessionEntry | null> {
-  incognito ??= captureIncognitoSessionOperation(params);
+  const binding = incognito ?? captureIncognitoSessionOperation(params);
   const sessionKey = params.sessionKey.trim();
   // Empty keys keep the shared no-op result without entering either storage owner.
-  if (!incognito || !sessionKey) {
+  if (!binding || !sessionKey) {
     return mutateAcpSessionMeta(params);
   }
-  const { actor, authority } = incognito;
+  const { actor, authority } = binding;
   actor.assertCurrent();
   authority.assertCurrent();
   const input = {

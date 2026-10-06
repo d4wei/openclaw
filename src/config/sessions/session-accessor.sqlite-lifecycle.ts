@@ -563,7 +563,7 @@ function deleteCapturedIncognitoSession(
     sessionKey: params.target.canonicalKey,
   });
   if (binding) {
-    params = {
+    const captured = {
       ...params,
       target: structuredClone(params.target),
       expectedEntry: params.expectedEntry && structuredClone(params.expectedEntry),
@@ -572,20 +572,21 @@ function deleteCapturedIncognitoSession(
     const authority = {
       assertCurrent() {
         binding.authority.assertCurrent();
-        params.commitGuard?.();
+        captured.commitGuard?.();
       },
     };
     return binding.actor.sessions.withSharedState(async () => {
       const { entry } = await binding.actor.sessions.read(authority, {
-        sessionKey: params.target.canonicalKey,
+        sessionKey: captured.target.canonicalKey,
       });
       if (
-        (params.expectedEntry && !sqliteSessionEntriesEqual(entry, params.expectedEntry)) ||
-        (params.expectedSessionId !== undefined &&
-          (entry?.sessionId ?? null) !== params.expectedSessionId) ||
-        (params.expectedLifecycleRevision !== undefined &&
-          entry?.lifecycleRevision !== params.expectedLifecycleRevision) ||
-        (params.expectedUpdatedAt !== undefined && entry?.updatedAt !== params.expectedUpdatedAt)
+        (captured.expectedEntry && !sqliteSessionEntriesEqual(entry, captured.expectedEntry)) ||
+        (captured.expectedSessionId !== undefined &&
+          (entry?.sessionId ?? null) !== captured.expectedSessionId) ||
+        (captured.expectedLifecycleRevision !== undefined &&
+          entry?.lifecycleRevision !== captured.expectedLifecycleRevision) ||
+        (captured.expectedUpdatedAt !== undefined &&
+          entry?.updatedAt !== captured.expectedUpdatedAt)
       ) {
         return { deleted: false, archivedTranscripts: [], expectedEntryMismatch: true as const };
       }
@@ -595,9 +596,9 @@ function deleteCapturedIncognitoSession(
       return deleteIncognitoSessionLifecycle({
         actor: binding.actor,
         authority,
-        env: params.env ?? process.env,
-        ownerStorePath: params.storePath,
-        target: { sessionKey: params.target.canonicalKey, entry },
+        env: captured.env ?? process.env,
+        ownerStorePath: captured.storePath,
+        target: { sessionKey: captured.target.canonicalKey, entry },
         reason: "deleted",
         expectedPluginOwnerId,
       });

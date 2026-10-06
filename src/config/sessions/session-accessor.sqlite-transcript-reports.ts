@@ -130,7 +130,7 @@ async function withIncognitoReportWorker<T>(
       expectedWriterRunId: fenced.expectedWriterRunId,
     },
   };
-  const result = await actor.sessions.withSharedState(async () => {
+  const settled = await actor.sessions.withSharedState(async () => {
     let prepared:
       | IncognitoTranscriptOperations["session.report.append"]["input"]["prepared"]
       | undefined;
@@ -142,15 +142,15 @@ async function withIncognitoReportWorker<T>(
     } = {
       prepare: async (selection) => {
         prepared = undefined;
-        const result = await actor.sessions.transcript(authority, {
+        const selectionResult = await actor.sessions.transcript(authority, {
           type: "session.report.prepare",
           input: { ...target, selection },
         });
-        if (!result.ok) {
-          return result;
+        if (!selectionResult.ok) {
+          return selectionResult;
         }
-        prepared = result.value.prepared;
-        return ok(result.value.facts);
+        prepared = selectionResult.value.prepared;
+        return ok(selectionResult.value.facts);
       },
       append: (report) => {
         if (!prepared) {
@@ -210,7 +210,7 @@ async function withIncognitoReportWorker<T>(
   });
   assertCurrent();
   actor.assertReadable();
-  return result;
+  return settled;
 }
 
 async function settleReportOperation<T>(
@@ -511,10 +511,10 @@ export async function appendAbortedSessionTranscriptPartial(
   },
   incognito?: IncognitoTranscriptReportBinding,
 ): Promise<Result<AbortedSessionTranscriptPartialResult, TranscriptAppendRefusal>> {
-  incognito ??= captureIncognitoSessionOperation(scope);
+  const binding = incognito ?? captureIncognitoSessionOperation(scope);
   const publicationScope = {
     ...scope,
-    ...(incognito
+    ...(binding
       ? { env: captureSessionTranscriptStorageEnvironment(scope.env ?? process.env) }
       : {}),
   };
@@ -527,7 +527,7 @@ export async function appendAbortedSessionTranscriptPartial(
     throw new Error("Aborted partial requires prepared assistant storage bytes");
   }
   const settlement =
-    !incognito && isProcessHeldTranscript(publicationScope)
+    !binding && isProcessHeldTranscript(publicationScope)
       ? await withNativeCurrentTranscript(publicationScope, (database, resolved) =>
           appendAbortedSessionTranscriptPartialInTransaction(
             database,
@@ -555,7 +555,7 @@ export async function appendAbortedSessionTranscriptPartial(
             return ok(receipt);
           },
           undefined,
-          incognito,
+          binding,
         );
   if (settlement.ok && !settlement.value.skipped && settlement.value.append.appended) {
     const { append, lifecycleRevision, messageSeq } = settlement.value;
@@ -576,9 +576,9 @@ export async function readLatestSessionTranscriptReport(
   customTypes: readonly string[],
   incognito?: IncognitoTranscriptReportBinding,
 ): Promise<Result<CustomMessageReport | undefined, TranscriptAppendRefusal>> {
-  incognito ??= captureIncognitoSessionOperation(scope);
+  const binding = incognito ?? captureIncognitoSessionOperation(scope);
   const selectedTypes = [...customTypes];
-  if (!incognito && isProcessHeldTranscript(scope)) {
+  if (!binding && isProcessHeldTranscript(scope)) {
     // Process-held incognito databases retain their sole native owner.
     return withNativeCurrentTranscript(
       scope,
@@ -601,7 +601,7 @@ export async function readLatestSessionTranscriptReport(
       return prepared.ok ? ok(prepared.value.latest) : prepared;
     },
     undefined,
-    incognito,
+    binding,
   );
 }
 

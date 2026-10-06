@@ -20,20 +20,20 @@ export async function readSessionPendingInputReceiptsInWorker(
   incognito?: IncognitoSessionHistoryBinding,
 ): Promise<ReturnType<typeof listSessionPendingInputReceipts>> {
   const capturedActor = !incognito && captureIncognitoSessionOperation(scope);
-  if (capturedActor) {
-    incognito = {
-      ...capturedActor,
-      target: {
-        sessionKey: scope.sessionKey,
-        sessionId: scope.sessionId,
-        lifecycleRevision: capturedActor.actor.sessions.readSharing(scope.sessionKey)?.entry
-          ?.lifecycleRevision,
-      },
-    };
-    scope = { ...scope, storePath: incognito.actor.path };
-  }
-  if (incognito) {
-    const result = await readIncognitoSessionHistory(incognito, scope, (target) => ({
+  const binding = capturedActor
+    ? {
+        ...capturedActor,
+        target: {
+          sessionKey: scope.sessionKey,
+          sessionId: scope.sessionId,
+          lifecycleRevision: capturedActor.actor.sessions.readSharing(scope.sessionKey)?.entry
+            ?.lifecycleRevision,
+        },
+      }
+    : incognito;
+  const boundScope = capturedActor ? { ...scope, storePath: capturedActor.actor.path } : scope;
+  if (binding) {
+    const result = await readIncognitoSessionHistory(binding, boundScope, (target) => ({
       type: "session.history.receipts",
       input: { ...target, runIds: options.runIds },
     }));
