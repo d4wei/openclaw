@@ -761,8 +761,10 @@ describe("subagent handoff", () => {
     expect(frames).toHaveLength(1);
     expect(frames[0]).toMatchObject({ key: waitingKey, runId: "run-1" });
     expect(frameShows(frames[0], prose)).toBe(true);
-    // Its operations are not rolled up under the handoff sentence in the meantime.
+    // Its operations are not rolled up under the handoff sentence in the meantime,
+    // and they stay below that sentence.
     expect(frames[0]?.parts.some((part) => part.kind === "work-group")).toBe(false);
+    expect(frames[0]?.parts.at(-1)).toMatchObject({ kind: "group", role: "tool" });
     expect(chain.transcriptItems.some((item) => item.kind === "notice")).toBe(false);
   });
 
@@ -837,6 +839,41 @@ describe("subagent handoff", () => {
       __openclaw: { id: "spoke", seq: 6, runId: "announce:resume" },
     };
     expect(logsOf([...waiting, spoke, resumedRow, answer])).toEqual([]);
+  });
+
+  it("moves work recorded after the resumed answer up to the operations before it", () => {
+    const partsOf = (trailing: unknown, key = sessionKey) =>
+      framesOf(
+        projectTranscriptChain(
+          chatItems({
+            sessionKey: key,
+            messages: [...waiting, readRow("read-2", "announce:resume", 7), answer, trailing],
+          }),
+          {
+            ...chainOptions,
+            sessionKey: key,
+            session: { key, lastRunId: "announce:resume", status: "done" },
+          },
+        ),
+      )[0]?.parts ?? [];
+    const endsWithAnswer = (parts: ReturnType<typeof partsOf>) => {
+      const last = parts.at(-1);
+      return last?.kind === "group" && last.messages.some((source) => source.message === answer);
+    };
+    const logSizes = (parts: ReturnType<typeof partsOf>) =>
+      parts.flatMap((part) => (part.kind === "activity-run" ? [part.groups.length] : []));
+    // The step that sent the answer is recorded after it; nothing follows the answer.
+    const folded = partsOf(readRow("wrapper", "announce:resume", 9));
+    expect(endsWithAnswer(folded)).toBe(true);
+    expect(logSizes(folded)).toEqual([3]);
+    // A step that failed there stays where it happened.
+    const failed = partsOf({ ...readRow("wrapper", "announce:resume", 9), isError: true });
+    expect(endsWithAnswer(failed)).toBe(false);
+    expect(logSizes(failed)).toEqual([2]);
+    // A session that never rolls completed work up keeps its transcript order.
+    const channel = partsOf(readRow("wrapper", "announce:resume", 9), "agent:main:main");
+    expect(endsWithAnswer(channel)).toBe(false);
+    expect(logSizes(channel)).toEqual([2]);
   });
 
   it("keeps a later request apart from the block that handed off", () => {

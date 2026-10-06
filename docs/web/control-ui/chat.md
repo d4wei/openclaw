@@ -46,7 +46,10 @@ When the last subagent finishes, the wait line ends and the block stays as it
 is, without a working indicator, until the turn resumes. Its answer then
 continues in that same block, with one footer at the end. Tool activity that
 resumes with nothing written in between joins the activity row from before the
-handoff. The working indicator
+handoff. In dashboard sessions, tool activity recorded after the resumed
+answer, such as the step that sent it, joins the activity before that answer,
+so the answer stays last; a step that failed there stays where it happened. The
+working indicator
 and the closing **Done in…** line then
 describe the whole request: time since you asked, including the wait, and
 output tokens from the runs in that block. The token count is left out when the
