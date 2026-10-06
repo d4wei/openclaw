@@ -11,12 +11,14 @@ import type { RealtimeVoiceProviderPlugin } from "openclaw/plugin-sdk/realtime-v
 import { closeOpenClawStateDatabaseAsync } from "openclaw/plugin-sdk/sqlite-runtime-testing";
 import type { WebSocket } from "openclaw/plugin-sdk/websocket-runtime";
 import { expect, it, vi } from "vitest";
+import { createVoiceCallCommandService } from "./command-service.js";
 import { VoiceCallConfigSchema, type VoiceCallConfig } from "./config.js";
 import { CallManager } from "./manager.js";
 import { createTestStorePath, FakeProvider, makePersistedCall } from "./manager.test-harness.js";
 import { findCallInStore } from "./manager/store.js";
 import * as callStore from "./manager/store.js";
 import { setVoiceCallStateRuntime } from "./runtime-state.js";
+import type { VoiceCallRuntime } from "./runtime.js";
 import { CallRecordSchema, type InitiateCallInput } from "./types.js";
 import { RealtimeCallHandler } from "./webhook/realtime-handler.js";
 import { connectWs, startUpgradeWsServer, waitForClose } from "./websocket-test-support.js";
@@ -142,6 +144,61 @@ it("reserves pending capacity without publishing or dialing an uncommitted call"
     expect(dial).toHaveBeenCalledOnce();
   });
 });
+
+it.each(["revoked", "aborted"] as const)(
+  "rejects steering when its authority is %s during durable write admission",
+  async (failureMode) => {
+    await withDelayedStore(
+      async ({ manager, config, storePath, holdNextWrite }) => {
+        const initiated = await manager.initiateCall("+15550002222", undefined, {
+          message: "Book a table",
+          mode: "conversation",
+          requesterSessionKey: "agent:main:owner",
+        });
+        expect(initiated.success).toBe(true);
+        const speakRealtime = vi.fn(() => ({ success: true }));
+        const runtime = {
+          config,
+          manager,
+          webhookServer: { speakRealtime },
+        } as unknown as VoiceCallRuntime;
+        const commands = createVoiceCallCommandService(async () => runtime);
+        const abortController = new AbortController();
+        let authorized = true;
+        const gate = holdNextWrite();
+        const pending = commands.steer({
+          callId: initiated.callId,
+          message: "Promise a refund",
+          requesterSessionKey: "agent:main:owner",
+          assertCurrent: () => {
+            abortController.signal.throwIfAborted();
+            if (!authorized) {
+              throw new Error("Steering caller authority expired");
+            }
+          },
+        });
+        await gate.entered;
+        if (failureMode === "aborted") {
+          abortController.abort();
+        } else {
+          authorized = false;
+        }
+        gate.release();
+
+        await expect(pending).rejects.toThrow(
+          failureMode === "aborted" ? /abort/i : "Steering caller authority expired",
+        );
+        expect(manager.getCall(initiated.callId)?.metadata?.ownerInstructions).toBeUndefined();
+        resetPluginStateStoreForTests();
+        expect(
+          (await findCallInStore(storePath, initiated.callId))?.metadata?.ownerInstructions,
+        ).toBeUndefined();
+        expect(speakRealtime).not.toHaveBeenCalled();
+      },
+      { realtime: true },
+    );
+  },
+);
 
 it.each(["committed", "failed", "retired"] as const)(
   "waits for the outbound provider binding before admitting a token-bound stream (%s)",

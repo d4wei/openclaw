@@ -179,16 +179,20 @@ function encodeCallRecordEvent(call: CallRecord) {
   };
 }
 
-async function pruneCallRecordEvents(stores: CallRecordStateStores): Promise<void> {
-  if (stores.events.count && (await stores.events.count()) <= MAX_CALL_RECORD_EVENTS) {
+async function pruneCallRecordEvents(
+  stores: CallRecordStateStores,
+  incomingEntries = 0,
+): Promise<void> {
+  const retainedLimit = Math.max(0, MAX_CALL_RECORD_EVENTS - incomingEntries);
+  if (stores.events.count && (await stores.events.count()) <= retainedLimit) {
     return;
   }
   const rows = await stores.events.entries();
-  if (rows.length <= MAX_CALL_RECORD_EVENTS) {
+  if (rows.length <= retainedLimit) {
     return;
   }
   const sorted = rows.toSorted((a, b) => a.createdAt - b.createdAt || a.key.localeCompare(b.key));
-  for (const row of sorted.slice(0, rows.length - MAX_CALL_RECORD_EVENTS)) {
+  for (const row of sorted.slice(0, rows.length - retainedLimit)) {
     const meta = await stores.events.lookup(row.key);
     await stores.events.delete(row.key);
     if (meta) {
@@ -300,6 +304,7 @@ export async function persistCallRecord(
   storePath: string,
   call: CallRecord,
   stateRuntime?: VoiceCallStateRuntime["state"],
+  options?: { assertCurrent?: () => void },
 ): Promise<void> {
   try {
     const stores = createCallRecordStateStores(storePath, stateRuntime);
@@ -310,8 +315,17 @@ export async function persistCallRecord(
     for (let index = 0; index < encoded.meta.chunkCount; index += 1) {
       await stores.chunks.register(buildChunkKey(eventKey, index), encoded.chunk(index));
     }
-    await stores.events.register(eventKey, { ...encoded.meta, ...order });
-    await pruneCallRecordEvents(stores);
+    if (options?.assertCurrent) {
+      // Keep guarded registration as the final await. Its caller can install the same snapshot in
+      // memory without an authority gap after durable write admission.
+      await pruneCallRecordEvents(stores, 1);
+      await stores.events.register(eventKey, { ...encoded.meta, ...order }, options);
+    } else {
+      // Existing callers publish before pruning and surface pruning failures with that snapshot
+      // still readable. Preserve that recovery contract for ordinary call-state writes.
+      await stores.events.register(eventKey, { ...encoded.meta, ...order });
+      await pruneCallRecordEvents(stores);
+    }
   } catch (err) {
     console.error("[voice-call] Failed to persist call record:", err);
     throw err;
