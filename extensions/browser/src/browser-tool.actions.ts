@@ -6,6 +6,7 @@ import {
 } from "openclaw/plugin-sdk/param-readers";
 import { formatErrorMessage } from "openclaw/plugin-sdk/security-runtime";
 import type { BrowserProxyRequest } from "./browser-node-proxy.js";
+import { resolveBrowserRecorderSettings } from "./browser-tool.recorder.js";
 import {
   browserAct,
   browserConsoleMessages,
@@ -311,6 +312,7 @@ export async function executeTextAction(
     marker: "\n[truncated — retry with a narrower selector]",
     includeWarning: true,
     maxChars,
+    innerCeilingChars: resolveBrowserRecorderSettings().capChars,
     prefix: result.truncated
       ? "Page text was truncated. Retry with a narrower selector."
       : undefined,

@@ -115,6 +115,13 @@ export const OpenClawSchemaShape = {
       defaultProfile: z.string().optional(),
       /** Default snapshot options (applied by the browser tool/CLI when unset). */
       snapshotDefaults: BrowserSnapshotDefaultsSchema,
+      /** Off by default; the model's copy of page reads is unchanged either way. */
+      recorder: z
+        .strictObject({
+          enabled: z.boolean().optional(),
+          capChars: z.number().int().positive().optional(),
+        })
+        .optional(),
       /** SSRF policy for browser navigation/open-tab operations. */
       ssrfPolicy: SsrFPolicyConfigSchema.optional(),
       profiles: z

@@ -16,6 +16,7 @@ import {
 } from "openclaw/plugin-sdk/security-runtime";
 import { DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS } from "openclaw/plugin-sdk/text-utility-runtime";
 import type { BrowserProxyRequest } from "./browser-node-proxy.js";
+import { resolveBrowserRecorderSettings } from "./browser-tool.recorder.js";
 import {
   DEFAULT_AI_SNAPSHOT_MAX_CHARS,
   browserSnapshot,
@@ -63,6 +64,8 @@ export function wrapBrowserExternalText(params: {
   marker: string;
   includeWarning: boolean;
   maxChars?: number;
+  /** Replaces the live-result ceiling on the inner text (`browser.recorder.capChars`). */
+  innerCeilingChars?: number;
   prefix?: string;
 }) {
   const wrap = (value: string) =>
@@ -74,12 +77,18 @@ export function wrapBrowserExternalText(params: {
   const wrapperOverhead = prefix.length + wrap("").length;
   let maxInnerChars = Math.max(
     0,
-    Math.min(params.maxChars ?? Infinity, DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS - wrapperOverhead),
+    Math.min(
+      params.maxChars ?? Infinity,
+      params.innerCeilingChars ?? DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS - wrapperOverhead,
+    ),
   );
   const value = neutralizeMediaDirectives(params.value);
   let bounded = truncateBrowserToolText(value, params.marker, maxInnerChars);
   let wrappedText = prefix + wrap(bounded.text);
-  if (wrappedText.length > DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS) {
+  if (
+    params.innerCeilingChars === undefined &&
+    wrappedText.length > DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS
+  ) {
     maxInnerChars = Math.max(
       0,
       maxInnerChars - (wrappedText.length - DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS),
@@ -87,7 +96,12 @@ export function wrapBrowserExternalText(params: {
     bounded = truncateBrowserToolText(value, params.marker, maxInnerChars);
     wrappedText = prefix + wrap(bounded.text);
   }
-  return { text: wrappedText, boundedText: bounded.text, truncated: bounded.truncated };
+  return {
+    text: wrappedText,
+    boundedText: bounded.text,
+    truncated: bounded.truncated,
+    capChars: maxInnerChars,
+  };
 }
 
 /** Wrap page-controlled JSON payloads as untrusted browser content. */
@@ -381,6 +395,7 @@ export async function executeSnapshotAction(params: {
       value: snapshot.snapshot ?? "",
       marker: BROWSER_EXTERNAL_JSON_TRUNCATION_MARKERS.snapshot,
       includeWarning: true,
+      innerCeilingChars: resolveBrowserRecorderSettings().capChars,
     });
     return await finishSnapshot(boundedSnapshot.text, {
       ok: true,

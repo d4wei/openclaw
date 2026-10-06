@@ -49,6 +49,11 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
     "Default snapshot capture configuration used when callers do not provide explicit snapshot options. Tune this for consistent capture behavior across channels and automation paths.",
   "browser.snapshotDefaults.mode":
     "Default snapshot extraction mode controlling how page content is transformed for agent consumption. Choose the mode that balances readability, fidelity, and token footprint for your workflows.",
+  "browser.recorder":
+    "Records each browser page read the model receives (snapshot, text, and page state after navigation): the whole outline, element boxes, and a full-page screenshot, written under <stateDir>/recorder/. The model's copy is unchanged.",
+  "browser.recorder.enabled": "Enables the browser page-read recorder. Default: false.",
+  "browser.recorder.capChars":
+    "Character ceiling on page text one snapshot or text result hands the model, replacing the browser tool's default live-result ceiling. The snapshot service's own maxChars defaults and later agent-level result limits still apply.",
   "browser.tabCleanup":
     "Best-effort cleanup policy for browser tabs opened by primary-agent sessions. Keep enabled to avoid stale sandbox or managed-browser tabs accumulating across long-lived gateways.",
   "browser.tabCleanup.enabled":
