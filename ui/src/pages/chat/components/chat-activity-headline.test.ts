@@ -151,7 +151,8 @@ it.each([
     status: "unknown",
     expected: "Outcome unknown",
   },
-  { name: "session_status", phase: "result", isError: false, expected: "" },
+  // A step with no title of its own leaves the row reading as its count.
+  { name: "session_status", phase: "result", isError: false, expected: "1 other operation" },
 ] as const)("renders accessible $name activity: $expected", ({ expected, ...params }) => {
   const activity = projectAgentToolActivity({ toolCallId: "purpose", ...params });
   render(renderActivityGroup([group("current", [activity])], liveOptions), container);

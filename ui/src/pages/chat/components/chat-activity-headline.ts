@@ -81,6 +81,7 @@ export function selectActivityHeadline(
 class ActivityHeadlineDirective extends AsyncDirective {
   private scope = "";
   private pluginToolIcons?: PluginToolIcons;
+  private summary = "";
   private shown: ActivityHeadline | undefined;
   private pending: ActivityHeadline | undefined;
   private shownAt = 0;
@@ -94,6 +95,7 @@ class ActivityHeadlineDirective extends AsyncDirective {
     pluginToolIcons?: PluginToolIcons,
   ) {
     this.pluginToolIcons = pluginToolIcons;
+    this.summary = summary;
     const reset = this.scope !== scope;
     this.scope = scope;
     if (reset) {
@@ -103,7 +105,7 @@ class ActivityHeadlineDirective extends AsyncDirective {
     this.pending = undefined;
     if (!activity) {
       this.shown = undefined;
-      return this.content(summary);
+      return this.content();
     }
     const urgent = activity.status === "failed" || activity.status === "blocked";
     const remaining = HEADLINE_HOLD_MS - (Date.now() - this.shownAt);
@@ -140,7 +142,7 @@ class ActivityHeadlineDirective extends AsyncDirective {
     this.shown = activity;
   }
 
-  private content(summary = "") {
+  private content() {
     const activity = this.shown;
     const name = activity?.name;
     // Icon and purpose share the same dwell, including asynchronous tool switches.
@@ -154,7 +156,18 @@ class ActivityHeadlineDirective extends AsyncDirective {
         >${name ? renderToolIcon(activity?.commandBearing ? "squareTerminal" : resolveToolDisplayIcon(name), { toolName: name, pluginToolIcons: this.pluginToolIcons }) : icons.listTree}</span
       >
       <span class="chat-tool-disclosure__content">
-        ${activity ? keyed(activity.title, html`<span class="chat-activity-group__label chat-activity-group__label--live">${activity.title}${activity.status === "running" ? "…" : ""}</span>`) : html`<span class="chat-activity-group__label">${summary}</span>`}
+        ${
+          // A step with no title of its own leaves the row reading as its count,
+          // not as a lone icon.
+          activity?.title
+            ? keyed(
+                activity.title,
+                html`<span class="chat-activity-group__label chat-activity-group__label--live"
+                  >${activity.title}${activity.status === "running" ? "…" : ""}</span
+                >`,
+              )
+            : html`<span class="chat-activity-group__label">${this.summary}</span>`
+        }
       </span>
     `;
   }

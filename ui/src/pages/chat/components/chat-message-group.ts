@@ -304,7 +304,8 @@ export function renderActivityGroup(
           opts.pluginToolIcons,
         )}
         ${
-          headline
+          // The count line already carries these when it stands in for the headline.
+          headline?.title
             ? describeToolGroup(visibleActivity)
                 .outcomes.filter(({ kind }) => kind !== "failed" && kind !== "skipped")
                 .map(
