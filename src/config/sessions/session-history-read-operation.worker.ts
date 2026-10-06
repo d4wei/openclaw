@@ -226,6 +226,7 @@ async function prepareHistoryRead(
             sessionKey: request.request.sessionKey,
             sessionId: request.request.sessionId,
             lifecycleRevision: request.request.lifecycleRevision,
+            previous: request.request.previous,
           });
       }
       const databaseIdentity = request.request.databaseIdentity;

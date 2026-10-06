@@ -170,14 +170,7 @@ export async function runSessionBranchSummaryWorkerRequest(
     await branchSummaries.run(
       { kind: "branch-summaries", request },
       {
-        inputBytes:
-          2 *
-          (request.database.agentId.length +
-            request.database.path.length +
-            request.databaseIdentity.length +
-            request.sessionKey.length +
-            request.sessionId.length +
-            (request.lifecycleRevision?.length ?? 0)),
+        inputBytes: JSON.stringify(request).length * 2,
         timeoutMs: 60_000,
         signal,
       },
