@@ -121,6 +121,8 @@ export type SnapshotResult =
       imageType?: "png" | "jpeg";
       blockedByDialog?: boolean;
       browserState?: unknown;
+      /** Present only when the request asked for the recorder. */
+      recorder?: { maxChars?: number; untruncatedSnapshot?: string };
     };
 
 export async function browserStatus(
@@ -395,6 +397,7 @@ export async function browserSnapshot(
     labels?: boolean;
     urls?: boolean;
     mode?: "efficient";
+    recorder?: boolean;
     profile?: string;
     timeoutMs?: number;
     signal?: AbortSignal;
@@ -439,6 +442,9 @@ export async function browserSnapshot(
   }
   if (opts.mode) {
     q.mode = opts.mode;
+  }
+  if (opts.recorder === true) {
+    q.recorder = "1";
   }
   const resolvedTimeoutMs =
     clampPositiveTimerTimeoutMs(opts.timeoutMs) ?? DEFAULT_BROWSER_SNAPSHOT_TIMEOUT_MS;

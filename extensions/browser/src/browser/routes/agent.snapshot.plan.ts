@@ -66,6 +66,7 @@ export function resolveSnapshotPlan(params: {
   return {
     format,
     mode,
+    recorder: toBoolean(params.query.recorder) === true,
     labels,
     urls,
     limit,

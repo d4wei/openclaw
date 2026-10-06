@@ -142,6 +142,7 @@ describe("pw-role-snapshot", () => {
     expect(result).toEqual({
       snapshot: `${first}\n\n${marker}`,
       truncated: true,
+      untruncatedSnapshot: `${first}\n${second}`,
       refs: { e1: { role: "button", name: "Visible" } },
       stats: {
         lines: 3,
@@ -204,6 +205,7 @@ describe("pw-role-snapshot", () => {
     expect(result).toEqual({
       snapshot: "…",
       truncated: true,
+      untruncatedSnapshot: '- button "Visible" [ref=e1]',
       refs: {},
       stats: { lines: 1, chars: 1, refs: 0, interactive: 0 },
     });

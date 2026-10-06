@@ -285,12 +285,44 @@ export async function browserPageText(
   opts: BrowserActionOptions & {
     selector?: string;
     maxChars: number;
+    recorder?: boolean;
   },
-): Promise<{ ok: true; targetId: string; url?: string; text: string; truncated: boolean }> {
+): Promise<{
+  ok: true;
+  targetId: string;
+  url?: string;
+  text: string;
+  truncated: boolean;
+  untruncatedText?: string;
+}> {
   return await readBrowserPageJson(baseUrl, "/text", opts, {
     ...buildQuery({ targetId: opts.targetId, selector: opts.selector }),
     maxChars: opts.maxChars,
+    ...(opts.recorder ? { recorder: true } : {}),
   });
+}
+
+/** Measure refs and save a full-page PNG for the page-read recorder. */
+export async function browserRecorderCapture(
+  baseUrl: BrowserClientTarget,
+  opts: BrowserActionOptions & { refs: string[] },
+): Promise<{
+  ok: true;
+  targetId: string;
+  url: string;
+  title: string;
+  viewport: { w: number; h: number };
+  page: { w: number; h: number };
+  boxes: Record<string, { x: number; y: number; w: number; h: number } | null>;
+  path: string;
+}> {
+  return await postBrowserJson(
+    baseUrl,
+    "/recorder/capture",
+    { targetId: opts.targetId, refs: opts.refs },
+    browserClientTimeout(baseUrl, undefined, 60000),
+    opts,
+  );
 }
 
 export async function browserEmulateSetting(

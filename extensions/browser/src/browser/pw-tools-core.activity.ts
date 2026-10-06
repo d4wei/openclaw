@@ -21,8 +21,10 @@ export async function getPageTextViaPlaywright(opts: {
   targetId?: string;
   selector?: string;
   maxChars?: number;
+  /** Also return the whole text when `maxChars` cut it, for the recorder. */
+  keepUntruncated?: boolean;
   signal?: AbortSignal;
-}): Promise<{ text: string; truncated: boolean }> {
+}): Promise<{ text: string; truncated: boolean; untruncatedText?: string }> {
   const maxChars = Math.min(
     opts.maxChars ?? DEFAULT_AI_SNAPSHOT_MAX_CHARS,
     DEFAULT_AI_SNAPSHOT_MAX_CHARS,
@@ -64,7 +66,12 @@ export async function getPageTextViaPlaywright(opts: {
         return error;
       },
     });
-    return { text: text.slice(0, maxChars), truncated: text.length > maxChars };
+    const truncated = text.length > maxChars;
+    return {
+      text: text.slice(0, maxChars),
+      truncated,
+      ...(truncated && opts.keepUntruncated ? { untruncatedText: text } : {}),
+    };
   } finally {
     cleanup();
   }

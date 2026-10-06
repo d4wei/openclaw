@@ -48,6 +48,7 @@ export {
   browserRequests,
   browserErrors,
   browserPageText,
+  browserRecorderCapture,
   browserEmulateSetting,
   browserDownload,
   browserNavigate,

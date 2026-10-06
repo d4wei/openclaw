@@ -33,6 +33,8 @@ export type RoleSnapshotResult<T extends RoleRef = RoleRef> = {
   refs: Record<string, T>;
   stats: RoleSnapshotStats;
   newElements?: number;
+  /** The whole formatted snapshot when `maxChars` cut it; routes strip it unless the recorder asks. */
+  untruncatedSnapshot?: string;
 };
 
 const ROLE_SNAPSHOT_TRUNCATION_MARKER = "[...TRUNCATED - page too large]";
@@ -50,6 +52,23 @@ export type RoleSnapshotOptions = {
 /** Read formatter-owned refs without interpreting names or scalar page content. */
 export function findRoleSnapshotLineRef(line: string): string | undefined {
   return parseSnapshotLine(line)?.ref;
+}
+
+/** Read a ref-bearing line's ref, role, and decoded name. */
+export function readRoleSnapshotLineIdentity(
+  line: string,
+): { ref: string; role: string; name?: string } | undefined {
+  const parsed = parseSnapshotLine(line);
+  if (!parsed?.ref) {
+    return undefined;
+  }
+  let name: string | undefined;
+  try {
+    name = decodeSnapshotName(parsed.nameToken);
+  } catch {
+    name = parsed.nameToken;
+  }
+  return { ref: parsed.ref, role: parsed.role, ...(name !== undefined ? { name } : {}) };
 }
 
 function getRoleSnapshotIdentityKey(
@@ -193,7 +212,7 @@ export function finalizeRoleSnapshot<T extends RoleRef>(params: {
     stats,
     ...(newElements !== undefined ? { newElements } : {}),
   };
-  return truncated ? { ...result, truncated: true } : result;
+  return truncated ? { ...result, truncated: true, untruncatedSnapshot: sourceSnapshot } : result;
 }
 
 function getIndentLevel(line: string): number {

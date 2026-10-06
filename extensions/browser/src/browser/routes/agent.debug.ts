@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import path from "node:path";
+import { ensureMediaDir, saveMediaBuffer } from "openclaw/plugin-sdk/media-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/security-runtime";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
 import { DEFAULT_TRACE_DIR } from "../paths.js";
@@ -106,7 +108,32 @@ export function registerBrowserAgentDebugRoutes(
     (input) => {
       const selector = normalizeOptionalString(input.selector);
       const maxChars = readRoutePositiveInteger(input.maxChars, "maxChars");
-      return (pw, target) => pw.getPageTextViaPlaywright({ ...target, selector, maxChars });
+      const keepUntruncated = toBoolean(input.recorder) === true;
+      return (pw, target) =>
+        pw.getPageTextViaPlaywright({ ...target, selector, maxChars, keepUntruncated });
+    },
+    EXISTING_SESSION_LIMITS.text,
+  );
+
+  register(
+    "post",
+    "/recorder/capture",
+    "page-read recorder",
+    (input) => {
+      const refs = Array.isArray(input.refs)
+        ? input.refs.filter((ref): ref is string => typeof ref === "string")
+        : [];
+      return async (pw, { cdpUrl, targetId, signal }) => {
+        const { buffer, ...capture } = await pw.captureRecorderViaPlaywright({
+          cdpUrl,
+          targetId,
+          refs,
+          signal,
+        });
+        await ensureMediaDir();
+        const saved = await saveMediaBuffer(buffer, "image/png", "browser", buffer.byteLength);
+        return { ...capture, path: path.resolve(saved.path) };
+      };
     },
     EXISTING_SESSION_LIMITS.text,
   );

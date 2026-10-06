@@ -51,6 +51,7 @@ import {
   typeViaPlaywright,
   waitForViaPlaywright,
 } from "./pw-tools-core.interactions.js";
+import { captureRecorderViaPlaywright } from "./pw-tools-core.recorder.js";
 import { responseBodyViaPlaywright } from "./pw-tools-core.responses.js";
 import {
   closePageViaPlaywright,
@@ -121,6 +122,7 @@ export const pwAi = {
   getNetworkRequestsViaPlaywright,
   getPageErrorsViaPlaywright,
   getPageTextViaPlaywright,
+  captureRecorderViaPlaywright,
   highlightViaPlaywright,
   hoverViaPlaywright,
   navigateViaPlaywright,

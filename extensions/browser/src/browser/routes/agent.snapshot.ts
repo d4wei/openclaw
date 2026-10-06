@@ -429,13 +429,16 @@ export function registerBrowserAgentSnapshotRoutes(
             });
           }
           await req.assertCurrent?.(profileCtx.profile);
-          const jsonSnapshot = (snapshot: Record<string, unknown>) =>
+          const jsonSnapshot = ({ untruncatedSnapshot, ...snapshot }: Record<string, unknown>) =>
             res.json({
               ok: true,
               format: plan.format,
               targetId: tab.targetId,
               url: tab.url,
               ...snapshot,
+              ...(plan.recorder
+                ? { recorder: { maxChars: plan.resolvedMaxChars, untruncatedSnapshot } }
+                : {}),
             });
           const deltaFamily: SnapshotDeltaFamily | undefined =
             plan.format === "ai"
