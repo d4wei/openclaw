@@ -6,7 +6,7 @@ import {
 } from "openclaw/plugin-sdk/param-readers";
 import { formatErrorMessage } from "openclaw/plugin-sdk/security-runtime";
 import type { BrowserProxyRequest } from "./browser-node-proxy.js";
-import { resolveBrowserRecorderSettings } from "./browser-tool.recorder.js";
+import { recordPageRead, resolveBrowserRecorderSettings } from "./browser-tool.recorder.js";
 import {
   browserAct,
   browserConsoleMessages,
@@ -300,23 +300,39 @@ export async function executeTextAction(
     }) ?? DEFAULT_AI_SNAPSHOT_MAX_CHARS,
     DEFAULT_AI_SNAPSHOT_MAX_CHARS,
   );
+  const recorderSettings = resolveBrowserRecorderSettings();
+  const recording = recorderSettings.enabled && !proxyRequest;
   const result = await browserPageText(proxyRequest ?? baseUrl, {
     targetId,
     selector,
     maxChars,
     profile,
     signal,
+    ...(recording ? { recorder: true } : {}),
   });
   const wrapped = wrapBrowserExternalText({
     value: result.text,
     marker: "\n[truncated — retry with a narrower selector]",
     includeWarning: true,
     maxChars,
-    innerCeilingChars: resolveBrowserRecorderSettings().capChars,
+    innerCeilingChars: recorderSettings.capChars,
     prefix: result.truncated
       ? "Page text was truncated. Retry with a narrower selector."
       : undefined,
   });
+  const recorder = recording
+    ? await recordPageRead({
+        action: "text",
+        args: input,
+        untruncated: result.untruncatedText ?? result.text,
+        received: wrapped.boundedText,
+        capChars: wrapped.capChars,
+        targetId: result.targetId,
+        baseUrl,
+        profile,
+        signal,
+      })
+    : undefined;
   return {
     content: [{ type: "text", text: wrapped.text }],
     details: {
@@ -325,6 +341,7 @@ export async function executeTextAction(
       url: result.url,
       truncated: result.truncated || wrapped.truncated,
       externalContent: { untrusted: true, source: "browser", kind: "text", wrapped: true },
+      ...(recorder ? { recorder } : {}),
     },
   };
 }
@@ -430,6 +447,7 @@ export async function executeActAction(params: {
     // loading; the model may need one follow-up snapshot for late content.
     return await appendNavigatedPageState({
       result: formatted,
+      recorderCall: { action: "act", args: { request: effectiveRequest } },
       targetId: resolvedTargetId,
       baseUrl,
       profile,

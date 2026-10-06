@@ -16,7 +16,7 @@ import {
 } from "openclaw/plugin-sdk/security-runtime";
 import { DEFAULT_MAX_LIVE_TOOL_RESULT_CHARS } from "openclaw/plugin-sdk/text-utility-runtime";
 import type { BrowserProxyRequest } from "./browser-node-proxy.js";
-import { resolveBrowserRecorderSettings } from "./browser-tool.recorder.js";
+import { recordPageRead, resolveBrowserRecorderSettings } from "./browser-tool.recorder.js";
 import {
   DEFAULT_AI_SNAPSHOT_MAX_CHARS,
   browserSnapshot,
@@ -207,9 +207,14 @@ export async function executeSnapshotAction(params: {
   proxyRequest: BrowserProxyRequest | null;
   signal?: AbortSignal;
   onTabActivity?: (targetId: string | undefined) => void | Promise<void>;
+  /** The tool action this read answers, and its args, as the recorder names them. */
+  recorderCall?: { action: string; args: Record<string, unknown> };
 }): Promise<AgentToolResult<unknown>> {
   const { input, baseUrl, profile, proxyRequest } = params;
   const snapshotDefaults = getRuntimeConfig().browser?.snapshotDefaults;
+  const recorderSettings = resolveBrowserRecorderSettings();
+  // Captures are moved into the local state dir, so node-host proxy reads go unrecorded.
+  const recording = recorderSettings.enabled && !proxyRequest;
   const format: "ai" | "aria" | undefined =
     input.snapshotFormat === "ai" ? "ai" : input.snapshotFormat === "aria" ? "aria" : undefined;
   const formatExplicit = format !== undefined;
@@ -263,6 +268,7 @@ export async function executeSnapshotAction(params: {
     urls,
     mode,
     timeoutMs: snapshotTimeoutMs,
+    ...(recording ? { recorder: true } : {}),
   };
   let refsFallback: "role" | undefined;
   const readSnapshot = async (query: typeof snapshotQuery) =>
@@ -395,8 +401,21 @@ export async function executeSnapshotAction(params: {
       value: snapshot.snapshot ?? "",
       marker: BROWSER_EXTERNAL_JSON_TRUNCATION_MARKERS.snapshot,
       includeWarning: true,
-      innerCeilingChars: resolveBrowserRecorderSettings().capChars,
+      innerCeilingChars: recorderSettings.capChars,
     });
+    const recorder = recording
+      ? await recordPageRead({
+          action: params.recorderCall?.action ?? "snapshot",
+          args: params.recorderCall?.args ?? input,
+          untruncated: snapshot.recorder?.untruncatedSnapshot ?? snapshot.snapshot ?? "",
+          received: boundedSnapshot.boundedText,
+          capChars: Math.min(snapshot.recorder?.maxChars ?? Infinity, boundedSnapshot.capChars),
+          targetId: snapshot.targetId,
+          baseUrl,
+          profile,
+          signal: params.signal,
+        })
+      : undefined;
     return await finishSnapshot(boundedSnapshot.text, {
       ok: true,
       ...identity,
@@ -407,6 +426,7 @@ export async function executeSnapshotAction(params: {
       ...aiMetadata,
       ...dialogState,
       externalContent,
+      ...(recorder ? { recorder } : {}),
     });
   }
   {
@@ -453,6 +473,7 @@ function withPageStateUnavailableHint(
  */
 export async function appendNavigatedPageState(params: {
   result: AgentToolResult<unknown>;
+  recorderCall: { action: string; args: Record<string, unknown> };
   targetId?: string;
   baseUrl?: string;
   profile?: string;
@@ -467,6 +488,7 @@ export async function appendNavigatedPageState(params: {
       profile: params.profile,
       proxyRequest: params.proxyRequest,
       signal: params.signal,
+      recorderCall: params.recorderCall,
     });
   } catch (err) {
     // Cancellation must keep aborting the whole tool call; only genuine
@@ -488,8 +510,10 @@ export async function appendNavigatedPageState(params: {
     params.result.details && typeof params.result.details === "object"
       ? (params.result.details as Record<string, unknown>)
       : {};
+  // The capture belongs to the call that delivered the page, so it sits beside pageState.
+  const { recorder, ...pageState } = (snapshot.details ?? {}) as Record<string, unknown>;
   return {
     content: [...params.result.content, ...snapshot.content],
-    details: { ...baseDetails, pageState: snapshot.details },
+    details: { ...baseDetails, pageState, ...(recorder ? { recorder } : {}) },
   };
 }

@@ -187,6 +187,7 @@ export async function executeBrowserTabAction(context: {
       }
       return await appendNavigatedPageState({
         result: formatted,
+        recorderCall: { action: "navigate", args: params },
         targetId: navigatedTargetId,
         baseUrl,
         profile,
