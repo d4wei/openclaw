@@ -442,15 +442,18 @@ describe("SQLite session branches", () => {
         value: {
           ok: true,
           value: {
-            status: "ok",
-            branches: expect.arrayContaining([
-              expect.objectContaining({
-                active: true,
-                leafEntryId: "assistant-2",
-                headline: "second answer",
-                messageCount: 4,
-              }),
-            ]),
+            kind: "branch-summaries",
+            result: {
+              status: "ok",
+              branches: expect.arrayContaining([
+                expect.objectContaining({
+                  active: true,
+                  leafEntryId: "assistant-2",
+                  headline: "second answer",
+                  messageCount: 4,
+                }),
+              ]),
+            },
           },
         },
       });

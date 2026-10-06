@@ -10,7 +10,6 @@ import type { SessionContextMessagesWorkerInput } from "./session-history-read.t
 import { unwrapSessionTranscriptWorkerReply } from "./session-history-worker-errors.js";
 import { resolveSessionTranscriptReadFence } from "./session-transcript-read-fence.js";
 import type {
-  SessionBranchSummaryWorkerInput,
   SessionEntryWorkerInput,
   SessionResetRecallWorkerInput,
   SessionModelContextWorkerInput,
@@ -48,9 +47,6 @@ const modelContextReads = createTranscriptReadPool<
 const sessionEntries = createTranscriptReadPool<
   SessionEntryWorkerInput | SessionResetRecallWorkerInput
 >(true);
-
-// Branch scans share background compute admission without delaying foreground history or context.
-const branchSummaries = createTranscriptReadPool<SessionBranchSummaryWorkerInput>(true);
 
 export async function readSessionTranscriptModelContextInWorker(
   target: SessionTranscriptRuntimeTarget,
@@ -166,14 +162,14 @@ export async function runSessionBranchSummaryWorkerRequest(
   request: SessionBranchSummaryReadRequest,
   signal: AbortSignal,
 ) {
-  return unwrapSessionTranscriptWorkerReply<"branch-summaries">(
-    await branchSummaries.run(
-      { kind: "branch-summaries", request },
-      {
-        inputBytes: JSON.stringify(request).length * 2,
-        timeoutMs: 60_000,
-        signal,
-      },
-    ),
+  const [{ withSessionHistoryWorkerDatabase }, { maintenanceLane }] = await Promise.all([
+    import("./session-transcript-worker-runtime.js"),
+    import("./session-transcript-worker-resources.js"),
+  ]);
+  const { database, ...read } = request;
+  return withSessionHistoryWorkerDatabase(
+    database,
+    (owner) => owner.readBranchSummaries({ request: read }, signal),
+    maintenanceLane,
   );
 }

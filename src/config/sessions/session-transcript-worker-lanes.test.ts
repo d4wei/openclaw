@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { channel } from "node:diagnostics_channel";
 import { afterAll, afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SQLITE_IDLE_HANDLE_TTL_MS } from "../../infra/sqlite-handle-lifecycle.js";
+import { WorkerTaskPool } from "../../infra/worker-task-pool.js";
 import type {
   WorkerTaskOptions,
   WorkerTaskPoolOptions,
 } from "../../infra/worker-task-pool.types.js";
 import { createDeferredCore } from "../../shared/deferred.js";
+import { runSessionBranchSummaryWorkerRequest } from "./session-transcript-read-worker-runtime.js";
 import {
   historyLane,
   maintenanceLane,
@@ -142,6 +144,47 @@ afterAll(() => {
   vi.useRealTimers();
   observed.setTimeout.mockRestore();
   observed.clearTimeout.mockRestore();
+});
+
+it("retains branch reads across ten-minute gaps in the maintenance owner", async () => {
+  const { database, scope } = input();
+  const request = {
+    database,
+    databaseIdentity: "synthetic-branch-owner",
+    sessionKey: scope.sessionKey,
+    sessionId: "branch-session",
+  };
+  const result = {
+    status: "ok" as const,
+    branches: [],
+    generation: "branch-generation",
+    maxSeq: 1,
+  };
+  const independentRead = vi
+    .spyOn(WorkerTaskPool.prototype, "run")
+    .mockResolvedValue({ ok: true, value: result });
+  observed.run.mockResolvedValue({ ok: true, value: { kind: "branch-summaries", result } });
+  const sequences = [historyLane.nativeSequence, projectionLane.nativeSequence];
+  const before = maintenanceLane.nativeSequence;
+  const signal = new AbortController().signal;
+  try {
+    await expect(runSessionBranchSummaryWorkerRequest(request, signal)).resolves.toEqual(result);
+    expect(maintenanceLane.nativeSequence).toBe(before + 1);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(observed.rotate).not.toHaveBeenCalled();
+
+    await expect(runSessionBranchSummaryWorkerRequest(request, signal)).resolves.toEqual(result);
+    expect(maintenanceLane.nativeSequence).toBe(before + 2);
+    expect([historyLane.nativeSequence, projectionLane.nativeSequence]).toEqual(sequences);
+    expect(independentRead).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(SQLITE_IDLE_HANDLE_TTL_MS - 1);
+    expect(observed.rotate).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(observed.rotate).toHaveBeenCalledOnce();
+    expect(isSessionHistoryWorkerCold(maintenanceLane)).toBe(true);
+  } finally {
+    independentRead.mockRestore();
+  }
 });
 
 it.each([historyLane, maintenanceLane])(
