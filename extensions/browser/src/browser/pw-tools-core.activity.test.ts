@@ -101,6 +101,21 @@ describe("page activity", () => {
     ).toEqual({ text: text.slice(0, DEFAULT_AI_SNAPSHOT_MAX_CHARS), truncated: true });
   });
 
+  it("returns the whole text beside the cut copy only when the recorder asks", async () => {
+    installTextPage({ article: ["Free shipping on orders over $50"], main: [], body: [] });
+    expect(
+      await getPageTextViaPlaywright({ ...target, maxChars: 13, keepUntruncated: true }),
+    ).toEqual({
+      text: "Free shipping",
+      truncated: true,
+      untruncatedText: "Free shipping on orders over $50",
+    });
+    expect(await getPageTextViaPlaywright({ ...target, maxChars: 13 })).toEqual({
+      text: "Free shipping",
+      truncated: true,
+    });
+  });
+
   it("filters by URL or resource type and clears the full network buffer", async () => {
     setPwToolsCoreCurrentPage({});
     const byUrl = {

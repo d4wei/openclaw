@@ -91,6 +91,16 @@ const browserActionsMocks = vi.hoisted(() => ({
     text: "Page prose",
     truncated: false,
   })),
+  browserRecorderCapture: vi.fn(async (..._args: unknown[]): Promise<Record<string, unknown>> => ({
+    ok: true,
+    targetId: "t1",
+    url: "https://example.com",
+    title: "Example",
+    viewport: { w: 1280, h: 720 },
+    page: { w: 1280, h: 720 },
+    boxes: {},
+    path: "/tmp/openclaw-media/recorder.png",
+  })),
   browserEmulateSetting: vi.fn(async (..._args: unknown[]) => ({ ok: true, targetId: "t1" })),
   browserNavigate: vi.fn(async (): Promise<Record<string, unknown>> => ({ ok: true })),
   browserDownload: vi.fn(async () => ({
