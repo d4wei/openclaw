@@ -19,6 +19,7 @@ import {
   deleteSessionEntryRows,
   writeSessionEntry,
 } from "../config/sessions/session-accessor.sqlite-entry-store.js";
+import { withIncognitoSessionActor } from "../config/sessions/session-incognito-binding.js";
 import { resolvePhysicalSessionStorePath } from "../config/sessions/session-store-path.js";
 import { clearSessionStoreCacheForTest } from "../config/sessions/store-writer-state.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
@@ -32,6 +33,7 @@ import { registerSessionStateWatch } from "../sessions/session-state-events.js";
 import { createDeferredCore } from "../shared/deferred.js";
 import { runOpenClawAgentWriteTransaction } from "../state/openclaw-agent-db.js";
 import { resolveIncognitoOpenClawAgentSqlitePath } from "../state/openclaw-agent-db.paths.js";
+import { captureOpenClawAgentDatabaseExecution } from "../state/openclaw-agent-execution.js";
 import { openOpenClawStateDatabase } from "../state/openclaw-state-db.js";
 import { observeMainThreadSql } from "../test-utils/main-thread-sql-spies.test-support.js";
 import {
@@ -50,6 +52,7 @@ import {
   getActiveMcpLoopbackRuntime,
   type McpLoopbackToolCallOutcome,
 } from "./mcp-http.loopback-runtime.js";
+import { createCompletionGrantLineageAdmission } from "./tool-resolution-completion.js";
 
 vi.mock("../agents/tools/gateway.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../agents/tools/gateway.js")>()),
@@ -546,4 +549,77 @@ describe("MCP loopback completion lineage at the final tool-effect fence", () =>
     expect(await grant.written()).toBeUndefined();
     expect(grant.outcomes).toEqual([]);
   });
+});
+
+it("keeps durable completion lineage in its incognito requester's captured root", async () => {
+  const agentId = "completion-requester";
+  const sessionKey = `agent:${agentId}:dashboard:incognito-lineage-root`;
+  await seedLineage({ completionOwnerSessionKey: sessionKey });
+  const actor = await captureOpenClawAgentDatabaseExecution({
+    kind: "ephemeral",
+    agentId,
+    env: state.env,
+    authority: { assertCurrent() {} },
+  });
+  if (!actor) {
+    throw new Error("Expected the isolated incognito requester");
+  }
+  const originalRoot = process.env.OPENCLAW_STATE_DIR;
+  try {
+    await actor.sessions.create(
+      { assertCurrent() {} },
+      {
+        sessionKey,
+        entry: { sessionId: requesterSessionId, updatedAt: 1, incognito: true },
+      },
+    );
+    await withIncognitoSessionActor(actor, async () => {
+      const lineage = createCompletionGrantLineageAdmission({
+        cfg: config,
+        context: {
+          sessionKey,
+          sessionId: requesterSessionId,
+          modelProvider: "claude-cli",
+          modelId: "opus",
+          inputProvenance: {
+            kind: "inter_session",
+            sourceSessionKey: childKey,
+            sourceChannel: "internal",
+            sourceTool: "subagent_announce",
+          },
+          trustedInternalHandoff: {
+            kind: "subagent-completion",
+            sourceSessionKey: childKey,
+            sourceSessionId: childEntry.sessionId,
+            targetSessionKey: sessionKey,
+            targetSessionId: requesterSessionId,
+            provider: "claude-cli",
+            model: "opus",
+          },
+        },
+      });
+      if (!lineage.admission) {
+        throw new Error("Expected completion lineage admission");
+      }
+      process.env.OPENCLAW_STATE_DIR = state.path("foreign-lineage-state");
+      const prepared = await lineage.admission.prepare();
+      expect(prepared.isCurrent()).toBe(true);
+      expect(prepared.current.sources).toMatchObject([
+        {
+          path: resolvePhysicalSessionStorePath({
+            agentId: "main",
+            sessionKey: childKey,
+            env: state.env,
+          }),
+        },
+      ]);
+    });
+  } finally {
+    if (originalRoot === undefined) {
+      delete process.env.OPENCLAW_STATE_DIR;
+    } else {
+      process.env.OPENCLAW_STATE_DIR = originalRoot;
+    }
+    await actor.close();
+  }
 });
