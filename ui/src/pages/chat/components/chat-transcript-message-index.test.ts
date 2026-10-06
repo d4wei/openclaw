@@ -842,8 +842,8 @@ describe("subagent handoff", () => {
   });
 
   it("moves work recorded after the resumed answer up to the operations before it", () => {
-    const partsOf = (trailing: unknown, key = sessionKey) =>
-      framesOf(
+    const partsOf = (trailing: unknown, key = sessionKey) => {
+      const frames = framesOf(
         projectTranscriptChain(
           chatItems({
             sessionKey: key,
@@ -855,7 +855,11 @@ describe("subagent handoff", () => {
             session: { key, lastRunId: "announce:resume", status: "done" },
           },
         ),
-      )[0]?.parts ?? [];
+      );
+      // Whatever follows the answer, the request stays one block.
+      expect(frames).toHaveLength(1);
+      return frames[0]!.parts;
+    };
     const endsWithAnswer = (parts: ReturnType<typeof partsOf>) => {
       const last = parts.at(-1);
       return last?.kind === "group" && last.messages.some((source) => source.message === answer);
@@ -870,6 +874,15 @@ describe("subagent handoff", () => {
     const failed = partsOf({ ...readRow("wrapper", "announce:resume", 9), isError: true });
     expect(endsWithAnswer(failed)).toBe(false);
     expect(logSizes(failed)).toEqual([2]);
+    // So does the message of a run that stopped in error after answering.
+    const stopped = partsOf({
+      role: "assistant",
+      content: [{ type: "toolCall", id: "late", name: "read", arguments: {} }],
+      stopReason: "error",
+      timestamp: 60,
+      __openclaw: { id: "stopped", seq: 9, runId: "announce:resume" },
+    });
+    expect(endsWithAnswer(stopped)).toBe(false);
     // A session that never rolls completed work up keeps its transcript order.
     const channel = partsOf(readRow("wrapper", "announce:resume", 9), "agent:main:main");
     expect(endsWithAnswer(channel)).toBe(false);

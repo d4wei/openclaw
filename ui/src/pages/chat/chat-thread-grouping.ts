@@ -418,6 +418,14 @@ function groupHasFailedResult(group: MessageGroup): boolean {
   );
 }
 
+/** A group holding the message that ended its run in failure; it marks where the run stopped. */
+export function groupEndsRunInFailure(group: MessageGroup): boolean {
+  return group.messages.some(
+    ({ message }) =>
+      assistantMessageIsInterrupted(message) || asRecord(message)?.stopReason === "error",
+  );
+}
+
 function groupHasVisibleReplyContent(group: MessageGroup, includeText = true): boolean {
   return group.visibleContent === "non-text" || (includeText && group.visibleContent === "text");
 }
@@ -555,36 +563,36 @@ export function collapseCompletedTurnWork(
     while (segmentStart > 0 && isTurnOutputGroup(turn[segmentStart - 1]!)) {
       segmentStart -= 1;
     }
-    const replyRunIds = runIdsWithVisibleReplies(turn);
     // A turn that handed off keeps its work in place: while it waits, between
     // the wait ending and the resume, and once the resumed run has answered in
     // the same block. Its closing line reports the whole request instead of a
     // rollup timed for the last run.
-    const handoffIndex = turn.findLastIndex(
-      (item) => item.kind === "notice" && item.handoffBoundary,
-    );
-    if (handoffIndex >= 0) {
-      // Work recorded after the resumed run's answer, such as the step that
-      // sent it, still goes above that answer, where a rollup puts it, so the
-      // answer stays last. A handoff's own sentence keeps its work under it.
-      const trailing = finalReplyIndex > handoffIndex ? turn.slice(finalReplyIndex + 1) : [];
+    if (turn.some((item) => item.kind === "notice" && item.handoffBoundary)) {
+      // Work the answering run recorded after its answer, such as the step
+      // that sent it, still goes above that answer, where a rollup puts it, so
+      // the answer stays last. Nothing moves past a handoff, which keeps a
+      // handoff's own sentence above its work, and nothing moves when any of
+      // it failed or ended the run: that stays where it happened.
+      const answer = finalReplyIndex >= 0 ? terminalReply : undefined;
+      const trailing = turn.slice(finalReplyIndex + 1);
       const answerLast =
+        answer?.runId !== undefined &&
         trailing.length > 0 &&
         trailing.every(
           (item) =>
             isCollapsibleWorkGroup(item) &&
-            (!item.runId || replyRunIds.has(item.runId)) &&
-            !groupHasFailedResult(item),
+            item.runId === answer.runId &&
+            !groupHasFailedResult(item) &&
+            !groupEndsRunInFailure(item),
         );
       result.push(
-        ...(answerLast
-          ? [...turn.slice(0, finalReplyIndex), ...trailing, turn[finalReplyIndex]!]
-          : turn),
+        ...(answerLast ? [...turn.slice(0, finalReplyIndex), ...trailing, answer] : turn),
       );
       continue;
     }
     // Independent reply-less runs retain their own activity rollup, rather than
     // becoming work for an earlier answer merely because no user spoke between them.
+    const replyRunIds = runIdsWithVisibleReplies(turn);
     while (segmentEnd + 1 < turn.length) {
       const next = turn[segmentEnd + 1]!;
       if (!isTurnOutputGroup(next) || (next.runId && !replyRunIds.has(next.runId))) {

@@ -7,6 +7,7 @@ import {
   resolveAssistantReplyPhase,
 } from "./chat-assistant-reply.ts";
 import {
+  groupEndsRunInFailure,
   joinActivityRuns,
   type ActivityRunRenderItem,
   type CompletedTurnRenderItem,
@@ -77,12 +78,7 @@ function itemFailsFrame(item: AgentRunFramePart): boolean {
   if (item.kind === "work-group" && item.replyRunId) {
     return false;
   }
-  return chatItemGroups(item).some((group) =>
-    group.messages.some(
-      ({ message }) =>
-        assistantMessageIsInterrupted(message) || asRecord(message)?.stopReason === "error",
-    ),
-  );
+  return chatItemGroups(item).some(groupEndsRunInFailure);
 }
 
 function itemIsActive(item: AgentRunFramePart): boolean {
