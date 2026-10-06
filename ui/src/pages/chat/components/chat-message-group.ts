@@ -302,18 +302,10 @@ export function renderActivityGroup(
           groupSummaryLabel,
           currentActivity,
           opts.pluginToolIcons,
+          describeToolGroup(visibleActivity)
+            .outcomes.filter(({ kind }) => kind !== "failed" && kind !== "skipped")
+            .map(({ label }) => label),
         )}
-        ${
-          // The count line already carries these when it stands in for the headline.
-          headline?.title
-            ? describeToolGroup(visibleActivity)
-                .outcomes.filter(({ kind }) => kind !== "failed" && kind !== "skipped")
-                .map(
-                  ({ label }) =>
-                    html`<span class="chat-activity-group__outcome muted">${label}</span>`,
-                )
-            : nothing
-        }
         ${renderToolReviewOutcome(reviewOutcome, approvalReviews[0]?.label)}
         ${
           activityExpanded

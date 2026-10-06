@@ -60,6 +60,32 @@ describe("activity headline cadence", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("keeps outcome labels with a held purpose and drops them beside the count", () => {
+    const draw = (activity: ActivityHeadline) =>
+      render(
+        html`<button>
+          ${activityHeadline("session:run", activity, "2 reads · 1 unknown", undefined, undefined, [
+            "1 unknown",
+          ])}
+        </button>`,
+        container,
+      );
+    const outcomes = () =>
+      [...container.querySelectorAll(".chat-activity-group__outcome")].map(
+        (node) => node.textContent,
+      );
+    draw(operation("first"));
+    vi.advanceTimersByTime(100);
+    // A step with no title waits its turn; the purpose still on show keeps its label.
+    draw({ ...operation("untitled"), title: "" });
+    expect(label()).toBe("Read first…");
+    expect(outcomes()).toEqual(["1 unknown"]);
+    vi.advanceTimersByTime(2_900);
+    // The count line carries the outcome itself.
+    expect(label()).toBe("2 reads · 1 unknown");
+    expect(outcomes()).toEqual([]);
+  });
+
   it("clears to the summary immediately and cannot resurrect a pending headline", () => {
     update(operation("first"));
     update(operation("pending"));

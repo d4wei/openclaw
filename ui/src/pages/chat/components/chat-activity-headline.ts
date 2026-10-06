@@ -82,6 +82,7 @@ class ActivityHeadlineDirective extends AsyncDirective {
   private scope = "";
   private pluginToolIcons?: PluginToolIcons;
   private summary = "";
+  private outcomes: readonly string[] = [];
   private shown: ActivityHeadline | undefined;
   private pending: ActivityHeadline | undefined;
   private shownAt = 0;
@@ -93,9 +94,11 @@ class ActivityHeadlineDirective extends AsyncDirective {
     summary: string,
     currentActivity?: readonly AgentActivityItem[],
     pluginToolIcons?: PluginToolIcons,
+    outcomes: readonly string[] = [],
   ) {
     this.pluginToolIcons = pluginToolIcons;
     this.summary = summary;
+    this.outcomes = outcomes;
     const reset = this.scope !== scope;
     this.scope = scope;
     if (reset) {
@@ -169,6 +172,15 @@ class ActivityHeadlineDirective extends AsyncDirective {
             : html`<span class="chat-activity-group__label">${this.summary}</span>`
         }
       </span>
+      ${
+        // The count line already carries these when it stands in for the
+        // headline, so they follow the headline this row is showing, held or not.
+        activity?.title
+          ? this.outcomes.map(
+              (label) => html`<span class="chat-activity-group__outcome muted">${label}</span>`,
+            )
+          : nothing
+      }
     `;
   }
 
