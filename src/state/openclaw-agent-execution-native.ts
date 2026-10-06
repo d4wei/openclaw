@@ -113,19 +113,7 @@ async function settleAgentRegistration<T>(
   return result.value;
 }
 
-export type AgentDatabaseNativeGeneration = {
-  failure(): "open-refused" | "native" | undefined;
-  isPrepared(): boolean;
-  captureClaim(): AgentDatabaseGenerationClaim;
-  run<T>(
-    source: AgentDatabaseRequestExecutionSource,
-    operation: (scope: AgentDatabaseExecutionScope) => Promise<T>,
-    assertCallerCurrent?: (identity?: AgentDatabaseExecutionFileIdentity) => void,
-    createIfMissing?: boolean,
-    signal?: AbortSignal,
-  ): Promise<T | undefined>;
-  close(): Promise<void>;
-};
+export type AgentDatabaseNativeGeneration = ReturnType<typeof createAgentDatabaseNativeGeneration>;
 
 /** Bind a native claim to the same borrower and logical generation that captured it. */
 export function captureBorrowedAgentDatabaseGenerationClaim(
@@ -161,7 +149,7 @@ export function createAgentDatabaseNativeGeneration(
   expectedIdentity: AgentDatabaseExecutionFileIdentity | undefined,
   acceptFileIdentity: (identity: AgentDatabaseExecutionFileIdentity) => void,
   creatingIdentity?: DatabasePathIdentity,
-): AgentDatabaseNativeGeneration {
+) {
   const input: AgentDatabaseExecutionOpen = {
     leaseId: randomUUID(),
     agentId,
@@ -639,7 +627,7 @@ export function createAgentDatabaseNativeGeneration(
     }
   };
   return {
-    failure: () =>
+    failure: (): "open-refused" | "native" | undefined =>
       openingFailure ??
       (openedStore && !isSqliteWorkerStoreAvailable(openedStore) ? "native" : undefined),
     isPrepared() {
