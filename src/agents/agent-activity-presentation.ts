@@ -99,9 +99,11 @@ export function isCompleteAgentPreamble(item: { phase?: string; progressText?: s
 }
 
 /**
- * `ownSessionLaunches` names the `sessions_spawn` operations that opened a
- * session in its own right. Prepared items do not carry the arguments that
- * say so; a caller that has them keeps those launches out of the subagents.
+ * A `sessions_spawn` operation counts as a subagent only when it started one:
+ * a launch that failed, was blocked or was skipped is one more operation.
+ * `ownSessionLaunches` names the launches that opened a session in its own
+ * right. Prepared items do not carry the arguments that say so; a caller that
+ * has them keeps those launches out of the subagents.
  */
 export function summarizeAgentActivity(
   items: readonly {
@@ -142,9 +144,11 @@ export function summarizeAgentActivity(
     // files. Free-form titles and metadata belong only in individual details.
     const name = normalizeLowercaseStringOrEmpty(item.name);
     const named = ACTIVITY_CATEGORIES.get(name) ?? "other";
+    const startedNothing =
+      item.status === "failed" || item.status === "blocked" || item.status === "skipped";
     const category = item.commandBearing
       ? "commands"
-      : named === "subagents" && opts.ownSessionLaunches?.has(operation)
+      : named === "subagents" && (startedNothing || opts.ownSessionLaunches?.has(operation))
         ? "other"
         : named;
     counts[category] += 1;

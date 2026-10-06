@@ -39,6 +39,15 @@ describe("summarizeToolGroup", () => {
     expect(summarizeToolGroup(launches, { ownSessionLaunches: new Set(["story"]) })).toBe(
       "1 other operation · 2 subagents",
     );
+    // A refused launch started no subagent.
+    const refused = prepared("tool:refused", "Sub-agent", {
+      name: "sessions_spawn",
+      toolCallId: "refused",
+      status: "failed",
+    });
+    expect(summarizeToolGroup([...launches, refused])).toBe(
+      "1 other operation · 3 subagents · 1 failed",
+    );
   });
 
   it("replaces running state with the same operation's outcome without counting suppressed siblings", () => {

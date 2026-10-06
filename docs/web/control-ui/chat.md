@@ -65,7 +65,8 @@ while it works and by its duration once it has finished. A subagent that failed
 or timed out reads **failed** instead, and one that was stopped reads
 **stopped**. Selecting the name opens that subagent's session; the rest of the
 row still expands the launch's details. Collapsed activity counts subagents on
-their own, such as **1 other operation · 3 subagents**. While the
+their own, such as **1 other operation · 3 subagents**. A launch that was
+refused started no subagent and is counted with the other operations. While the
 step in progress has no title of its own, the collapsed row keeps showing that
 count. A launch that opens a
 child session in its own right, such as one asked for with `visible`, is not a
