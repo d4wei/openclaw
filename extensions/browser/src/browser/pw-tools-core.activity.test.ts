@@ -116,6 +116,21 @@ describe("page activity", () => {
     });
   });
 
+  it("returns the unselected page's text beside a selector read only when the recorder asks", async () => {
+    installTextPage({ article: ["Free shipping on orders over $50"], ".promo": ["Over $50"] });
+    expect(
+      await getPageTextViaPlaywright({ ...target, selector: ".promo", keepUntruncated: true }),
+    ).toEqual({
+      text: "Over $50",
+      truncated: false,
+      unfilteredText: "Free shipping on orders over $50",
+    });
+    expect(await getPageTextViaPlaywright({ ...target, selector: ".promo" })).toEqual({
+      text: "Over $50",
+      truncated: false,
+    });
+  });
+
   it("filters by URL or resource type and clears the full network buffer", async () => {
     setPwToolsCoreCurrentPage({});
     const byUrl = {

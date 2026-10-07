@@ -21,10 +21,18 @@ export async function getPageTextViaPlaywright(opts: {
   targetId?: string;
   selector?: string;
   maxChars?: number;
-  /** Also return the whole text when `maxChars` cut it, for the recorder. */
+  /**
+   * For the recorder: also return the whole text when `maxChars` cut it, and with a
+   * `selector`, the unselected page's whole text as `unfilteredText`.
+   */
   keepUntruncated?: boolean;
   signal?: AbortSignal;
-}): Promise<{ text: string; truncated: boolean; untruncatedText?: string }> {
+}): Promise<{
+  text: string;
+  truncated: boolean;
+  untruncatedText?: string;
+  unfilteredText?: string;
+}> {
   const maxChars = Math.min(
     opts.maxChars ?? DEFAULT_AI_SNAPSHOT_MAX_CHARS,
     DEFAULT_AI_SNAPSHOT_MAX_CHARS,
@@ -39,12 +47,12 @@ export async function getPageTextViaPlaywright(opts: {
     ? AbortSignal.any([opts.signal, controller.signal])
     : controller.signal;
   const { abortPromise, cleanup } = createAbortPromiseWithListener(signal);
-  const read = async () => {
+  const read = async (scope: string | undefined) => {
     signal.throwIfAborted();
     const page = await getPageForTargetId(opts);
     signal.throwIfAborted();
-    let locator = page.locator(opts.selector ?? "body").first();
-    if (!opts.selector) {
+    let locator = page.locator(scope ?? "body").first();
+    if (!scope) {
       for (const selector of ["article", "main"]) {
         const candidate = page.locator(selector).first();
         const count = await candidate.count();
@@ -59,18 +67,30 @@ export async function getPageTextViaPlaywright(opts: {
     return await locator.innerText({ timeout: Math.max(1, deadline - Date.now()), signal });
   };
   try {
-    const text = await withTimeout(awaitActionWithAbort(read(), abortPromise), timeout, {
-      createError: () => {
-        const error = new Error(`Page text extraction timed out after ${timeout}ms`);
-        controller.abort(error);
-        return error;
+    const readBoth = async () => {
+      const selected = await read(opts.selector);
+      return {
+        selected,
+        unfiltered: opts.keepUntruncated && opts.selector ? await read(undefined) : undefined,
+      };
+    };
+    const { selected: text, unfiltered } = await withTimeout(
+      awaitActionWithAbort(readBoth(), abortPromise),
+      timeout,
+      {
+        createError: () => {
+          const error = new Error(`Page text extraction timed out after ${timeout}ms`);
+          controller.abort(error);
+          return error;
+        },
       },
-    });
+    );
     const truncated = text.length > maxChars;
     return {
       text: text.slice(0, maxChars),
       truncated,
       ...(truncated && opts.keepUntruncated ? { untruncatedText: text } : {}),
+      ...(unfiltered !== undefined ? { unfilteredText: unfiltered } : {}),
     };
   } finally {
     cleanup();

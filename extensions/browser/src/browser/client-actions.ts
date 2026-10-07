@@ -294,6 +294,7 @@ export async function browserPageText(
   text: string;
   truncated: boolean;
   untruncatedText?: string;
+  unfilteredText?: string;
 }> {
   return await readBrowserPageJson(baseUrl, "/text", opts, {
     ...buildQuery({ targetId: opts.targetId, selector: opts.selector }),

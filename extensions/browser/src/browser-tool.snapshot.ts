@@ -328,6 +328,25 @@ export async function executeSnapshotAction(params: {
     }
     return { content: [{ type: "text", text }], details };
   };
+  const recorderSource =
+    recording && snapshot.format === "ai"
+      ? (snapshot.recorder?.untruncatedSnapshot ?? snapshot.snapshot ?? "")
+      : undefined;
+  const recordRead = async (
+    copy: Pick<Parameters<typeof recordPageRead>[0], "received" | "capChars" | "filtered">,
+  ) =>
+    recorderSource !== undefined
+      ? await recordPageRead({
+          action: params.recorderCall?.action ?? "snapshot",
+          args: params.recorderCall?.args ?? input,
+          untruncated: recorderSource,
+          ...copy,
+          targetId: snapshot.targetId,
+          baseUrl,
+          profile,
+          signal: params.signal,
+        })
+      : undefined;
   const query = normalizeOptionalString(input.query);
   if (query && !snapshot.blockedByDialog) {
     const tokens = query.toLowerCase().split(/\s+/);
@@ -366,6 +385,12 @@ export async function executeSnapshotAction(params: {
     const newElements = filtered.snapshot
       .split("\n")
       .filter((line) => line.endsWith(" [new]") && findRoleSnapshotLineRef(line)).length;
+    // The capture keeps the whole page; the matches, the model's copy, go beside it.
+    const recorder = await recordRead({
+      received: wrapped.boundedText,
+      capChars: wrapped.capChars,
+      filtered: { truncated: snapshot.truncated || wrapped.truncated },
+    });
     return await finishSnapshot(wrapped.text, {
       ok: snapshot.ok,
       ...identity,
@@ -377,6 +402,7 @@ export async function executeSnapshotAction(params: {
       ...dialogState,
       ...aiMetadata,
       externalContent,
+      ...(recorder ? { recorder } : {}),
     });
   }
   if (snapshot.format === "ai") {
@@ -403,19 +429,10 @@ export async function executeSnapshotAction(params: {
       includeWarning: true,
       innerCeilingChars: recorderSettings.capChars,
     });
-    const recorder = recording
-      ? await recordPageRead({
-          action: params.recorderCall?.action ?? "snapshot",
-          args: params.recorderCall?.args ?? input,
-          untruncated: snapshot.recorder?.untruncatedSnapshot ?? snapshot.snapshot ?? "",
-          received: boundedSnapshot.boundedText,
-          capChars: Math.min(snapshot.recorder?.maxChars ?? Infinity, boundedSnapshot.capChars),
-          targetId: snapshot.targetId,
-          baseUrl,
-          profile,
-          signal: params.signal,
-        })
-      : undefined;
+    const recorder = await recordRead({
+      received: boundedSnapshot.boundedText,
+      capChars: Math.min(snapshot.recorder?.maxChars ?? Infinity, boundedSnapshot.capChars),
+    });
     return await finishSnapshot(boundedSnapshot.text, {
       ok: true,
       ...identity,

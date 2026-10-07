@@ -320,12 +320,17 @@ export async function executeTextAction(
       ? "Page text was truncated. Retry with a narrower selector."
       : undefined,
   });
+  // A selector read is captured from the unselected page, its text kept beside it.
+  const filtered = selector !== undefined && result.unfilteredText !== undefined;
   const recorder = recording
     ? await recordPageRead({
         action: "text",
         args: input,
-        untruncated: result.untruncatedText ?? result.text,
+        untruncated: filtered
+          ? (result.unfilteredText ?? "")
+          : (result.untruncatedText ?? result.text),
         received: wrapped.boundedText,
+        ...(filtered ? { filtered: { truncated: result.truncated || wrapped.truncated } } : {}),
         capChars: wrapped.capChars,
         targetId: result.targetId,
         baseUrl,

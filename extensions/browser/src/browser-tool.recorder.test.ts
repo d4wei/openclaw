@@ -21,6 +21,12 @@ const OUTLINE = OUTLINE_LINES.join("\n");
 
 let stateDir: string;
 
+/** The lines a snapshot query keeps: every whitespace token appears, case-insensitively. */
+function queryMatches(lines: string[], query: string) {
+  const tokens = query.toLowerCase().split(/\s+/);
+  return lines.filter((line) => tokens.every((token) => line.toLowerCase().includes(token)));
+}
+
 function execute(input: Record<string, unknown>) {
   return createBrowserTool().execute("call-1", input);
 }
@@ -45,6 +51,7 @@ async function readCapture(dir: string) {
     boxes: JSON.parse(await fs.readFile(path.join(root, "boxes.json"), "utf8")),
     meta: JSON.parse(await fs.readFile(path.join(root, "meta.json"), "utf8")),
     png: await fs.readFile(path.join(root, "page.png")),
+    received: await fs.readFile(path.join(root, "received.txt"), "utf8").catch(() => undefined),
   };
 }
 
@@ -149,6 +156,60 @@ describe("browser recorder", () => {
     });
     expect(capture.meta.cap_chars).toBeLessThan(16_000);
     expect(capture.png.toString()).toBe("png-bytes");
+    expect(capture.received).toBeUndefined();
+    expect(capture.meta).not.toHaveProperty("received");
+  });
+
+  it("captures a query-filtered snapshot from the whole outline, its matches beside it", async () => {
+    enableRecorder();
+    const result = await execute({ action: "snapshot", targetId: "t1", query: "product 17 with" });
+    const capture = await readCapture("recorder/0001-snapshot");
+    const matched = queryMatches(OUTLINE_LINES, "product 17 with");
+    const matches = matched.join("\n");
+
+    expect(capture.outline).toBe(OUTLINE);
+    expect(capture.received).toBe(matches);
+    expect(innerPageText(resultText(result))).toBe(matches);
+    expect(result.details).toMatchObject({
+      matchCount: matched.length,
+      recorder: {
+        dir: "recorder/0001-snapshot",
+        received_chars: matches.length,
+        total_chars: OUTLINE.length,
+        truncated: false,
+      },
+    });
+    expect(capture.meta).toMatchObject({
+      received: "received.txt",
+      received_chars: matches.length,
+      total_chars: OUTLINE.length,
+      truncated: false,
+      args: { action: "snapshot", query: "product 17 with" },
+    });
+    expect(Object.keys(capture.boxes.refs)).toHaveLength(OUTLINE_LINES.length);
+  });
+
+  it("marks a filtered capture truncated when the page it filtered was cut", async () => {
+    enableRecorder();
+    const cut = OUTLINE_LINES.slice(0, 50).join("\n");
+    client.browserSnapshot.mockResolvedValueOnce({
+      ok: true,
+      format: "ai",
+      targetId: "t1",
+      url: "https://shop.example/",
+      snapshot: cut,
+      truncated: true,
+      recorder: { maxChars: 4000, untruncatedSnapshot: OUTLINE },
+    });
+
+    const result = await execute({ action: "snapshot", targetId: "t1", query: "product 7 with" });
+    const capture = await readCapture("recorder/0001-snapshot");
+
+    expect(capture.outline).toBe(OUTLINE);
+    expect(capture.received).toBe(
+      queryMatches(OUTLINE_LINES.slice(0, 50), "product 7 with").join("\n"),
+    );
+    expect((result.details as { recorder: { truncated: boolean } }).recorder.truncated).toBe(true);
   });
 
   it("uses the service's uncut outline and reports the tighter cap", async () => {
@@ -231,6 +292,31 @@ describe("browser recorder", () => {
     const capture = await readCapture("recorder/0008-text");
     expect(capture.outline).toBe("Free shipping on orders over $50");
     expect(capture.boxes).toEqual({ url: "https://shop.example/", refs: {} });
+  });
+
+  it("captures a selector text read from the unselected page, its text beside it", async () => {
+    enableRecorder();
+    actions.browserPageText.mockResolvedValueOnce({
+      ok: true,
+      targetId: "t1",
+      url: "https://shop.example/",
+      text: "Over $50",
+      truncated: false,
+      unfilteredText: "Free shipping\nOver $50",
+    });
+
+    const result = await execute({ action: "text", targetId: "t1", selector: ".promo" });
+    const capture = await readCapture("recorder/0001-text");
+
+    expect(capture.outline).toBe("Free shipping\nOver $50");
+    expect(capture.received).toBe("Over $50");
+    expect(result.details).toMatchObject({
+      recorder: { received_chars: 8, total_chars: 22, truncated: false },
+    });
+    expect(capture.meta).toMatchObject({
+      received: "received.txt",
+      args: { action: "text", selector: ".promo" },
+    });
   });
 
   it("keeps the tool result when the capture fails", async () => {

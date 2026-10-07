@@ -19,6 +19,7 @@ import { neutralizeMediaDirectives } from "./browser/vision.js";
 
 const logger = createSubsystemLogger("browser");
 const RECORDER_DIR = "recorder";
+const RECEIVED_FILE = "received.txt";
 
 export type BrowserRecorderSettings = {
   enabled: boolean;
@@ -134,6 +135,12 @@ export async function recordPageRead(params: {
   args: Record<string, unknown>;
   untruncated: string;
   received: string;
+  /**
+   * Set when the model's copy is a selection from the read (a snapshot query, a text
+   * selector) rather than a prefix of it; `truncated` says whether that copy or the
+   * page it was selected from was cut.
+   */
+  filtered?: { truncated: boolean };
   capChars: number;
   targetId?: string;
   baseUrl?: string;
@@ -142,7 +149,9 @@ export async function recordPageRead(params: {
 }): Promise<BrowserRecorderDetails | undefined> {
   try {
     const outline = recorderOutline(params.untruncated);
-    const receivedChars = receivedPrefixChars(params.received, outline);
+    const receivedChars = params.filtered
+      ? params.received.length
+      : receivedPrefixChars(params.received, outline);
     const refs = outlineRefs(outline);
     const capture = await browserRecorderCapture(params.baseUrl, {
       targetId: params.targetId,
@@ -162,7 +171,7 @@ export async function recordPageRead(params: {
       dir: `${RECORDER_DIR}/${name}`,
       received_chars: receivedChars,
       total_chars: outline.length,
-      truncated: receivedChars < outline.length,
+      truncated: params.filtered ? params.filtered.truncated : receivedChars < outline.length,
     };
     const meta = {
       n,
@@ -177,9 +186,11 @@ export async function recordPageRead(params: {
       viewport: capture.viewport,
       page: capture.page,
       args: redactArgs(params.args),
+      ...(params.filtered ? { received: RECEIVED_FILE } : {}),
     };
     await Promise.all([
       fs.writeFile(path.join(dir, "outline.txt"), outline),
+      ...(params.filtered ? [fs.writeFile(path.join(dir, RECEIVED_FILE), params.received)] : []),
       fs.writeFile(
         path.join(dir, "boxes.json"),
         `${JSON.stringify({ url: capture.url, refs: boxes }, null, 1)}\n`,
