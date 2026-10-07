@@ -6,7 +6,12 @@ import {
 } from "openclaw/plugin-sdk/param-readers";
 import { formatErrorMessage } from "openclaw/plugin-sdk/security-runtime";
 import type { BrowserProxyRequest } from "./browser-node-proxy.js";
-import { recordPageRead, resolveBrowserRecorderSettings } from "./browser-tool.recorder.js";
+import {
+  describeActFailure,
+  recordPageRead,
+  resolveBrowserRecorderSettings,
+  withActRecord,
+} from "./browser-tool.recorder.js";
 import {
   browserAct,
   browserConsoleMessages,
@@ -418,7 +423,7 @@ export async function executeDownloadAction(
 }
 
 /** Execute browser actions with route-owned timeout semantics and stale-tab recovery. */
-export async function executeActAction(params: {
+type ActActionParams = {
   request: BrowserActRequest;
   baseUrl?: string;
   profile?: string;
@@ -427,7 +432,52 @@ export async function executeActAction(params: {
   signal?: AbortSignal;
   onTabActivity?: (targetId: string | undefined) => void | Promise<void>;
   onTabClose?: (targetId: string | undefined) => void | Promise<void>;
-}): Promise<AgentToolResult<unknown>> {
+};
+
+/**
+ * Run an act. With the recorder on, the result's `details.recorder` gains `act`: the
+ * time the act took, and on failure its error and the element covering its target.
+ */
+export async function executeActAction(params: ActActionParams): Promise<AgentToolResult<unknown>> {
+  if (!resolveBrowserRecorderSettings().enabled || params.proxyRequest) {
+    return await runActAction(params);
+  }
+  const timing: { elapsedMs?: number } = {};
+  const started = performance.now();
+  let result: AgentToolResult<unknown>;
+  try {
+    result = await runActAction(params, timing);
+  } catch (error) {
+    params.signal?.throwIfAborted();
+    throw withActRecord(
+      error,
+      await describeActFailure({
+        error,
+        request: params.request,
+        elapsedMs: timing.elapsedMs ?? performance.now() - started,
+        baseUrl: params.baseUrl,
+        profile: params.profile,
+        signal: params.signal,
+      }),
+    );
+  }
+  const details =
+    result.details && typeof result.details === "object"
+      ? (result.details as Record<string, unknown>)
+      : {};
+  const recorder =
+    details.recorder && typeof details.recorder === "object"
+      ? (details.recorder as Record<string, unknown>)
+      : {};
+  const act = { elapsed_ms: Math.round(timing.elapsedMs ?? performance.now() - started) };
+  return { ...result, details: { ...details, recorder: { ...recorder, act } } };
+}
+
+async function runActAction(
+  params: ActActionParams,
+  /** Filled with the time the last dispatched act took, page-state capture excluded. */
+  timing?: { elapsedMs?: number },
+): Promise<AgentToolResult<unknown>> {
   const { request, baseUrl, profile, proxyRequest } = params;
   if ("timeoutMs" in request && request.timeoutMs !== undefined) {
     normalizePositiveTimeoutMs(request.timeoutMs);
@@ -461,9 +511,14 @@ export async function executeActAction(params: {
     });
   };
   const dispatchAct = async (actionRequest: BrowserActRequest) => {
+    const started = performance.now();
     const result = await browserAct(proxyRequest ?? baseUrl, actionRequest, {
       profile,
       signal: params.signal,
+    }).finally(() => {
+      if (timing) {
+        timing.elapsedMs = performance.now() - started;
+      }
     });
     return {
       result,

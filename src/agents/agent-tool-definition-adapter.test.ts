@@ -21,6 +21,7 @@ import { wrapToolWithBeforeToolCallHook } from "./agent-tools.before-tool-call.j
 import { createExecTool } from "./bash-tools.exec-run.js";
 import type { ClientToolDefinition } from "./embedded-agent-runner/run/params.js";
 import { wrapToolDefinition } from "./sessions/tools/tool-definition-wrapper.js";
+import { withToolErrorDetails } from "./tool-error-details.js";
 
 type ToolExecute = ReturnType<typeof toToolDefinitions>[number]["execute"];
 const extensionContext = {} as Parameters<ToolExecute>[4];
@@ -153,6 +154,34 @@ describe("agent tool definition adapter", () => {
     expect(details?.tool).toBe("boom");
     expect(details?.error).toBe("nope");
     expect(JSON.stringify(result.details)).not.toContain("\n    at ");
+  });
+
+  it("keeps details a failure carries beside the unchanged error text", async () => {
+    const plain = await executeThrowingTool("boom", "call-plain");
+    const result = await executeTool(
+      {
+        name: "boom",
+        label: "Boom",
+        description: "throws",
+        parameters: Type.Object({}),
+        execute: async () => {
+          throw withToolErrorDetails(new Error("nope"), {
+            recorder: { act: { elapsed_ms: 12 } },
+            status: "shadowed",
+          });
+        },
+      } satisfies AgentTool,
+      "call-details",
+    );
+
+    expect(result.content).toEqual(plain.content);
+    expect(result.details).toEqual({
+      recorder: { act: { elapsed_ms: 12 } },
+      status: "error",
+      tool: "boom",
+      error: "nope",
+    });
+    expect(plain.details).toEqual({ status: "error", tool: "boom", error: "nope" });
   });
 
   it("normalizes exec tool aliases in error results", async () => {

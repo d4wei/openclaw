@@ -49,6 +49,7 @@ export {
   browserErrors,
   browserPageText,
   browserRecorderCapture,
+  browserRecorderHitTest,
   browserEmulateSetting,
   browserDownload,
   browserNavigate,

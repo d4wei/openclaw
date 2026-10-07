@@ -374,6 +374,87 @@ describe("browser recorder", () => {
   });
 });
 
+describe("browser recorder act results", () => {
+  const ERROR_DETAILS = Symbol.for("openclaw.toolErrorDetails");
+  const click = { action: "act", request: { kind: "click", ref: "e5", targetId: "t1" } };
+
+  async function failure(input: Record<string, unknown>) {
+    try {
+      await execute(input);
+    } catch (error) {
+      return error as Error & { [ERROR_DETAILS]?: unknown };
+    }
+    throw new Error("the act did not fail");
+  }
+
+  it("records how long a successful act took", async () => {
+    enableRecorder();
+    actions.browserAct.mockResolvedValueOnce({ ok: true, targetId: "t1" });
+
+    const result = await execute(click);
+    const act = (result.details as { recorder: { act: { elapsed_ms: number } } }).recorder.act;
+
+    expect(act).toEqual({ elapsed_ms: expect.any(Number) });
+    expect(act.elapsed_ms).toBeGreaterThanOrEqual(0);
+    expect(result.details).not.toHaveProperty("recorder.dir");
+    expect(actions.browserRecorderHitTest).not.toHaveBeenCalled();
+  });
+
+  it("records a failed act's error, the element covering its target and the time lost", async () => {
+    enableRecorder();
+    const covered = {
+      role: "dialog",
+      name: "Sign up for 10% off",
+      ref: "e40",
+      box: { x: 0, y: 0, w: 1280, h: 720 },
+    };
+    actions.browserAct.mockRejectedValueOnce(
+      new Error('<div class="modal"> intercepts pointer events'),
+    );
+    actions.browserRecorderHitTest.mockResolvedValueOnce({ ok: true, targetId: "t1", covered });
+
+    const error = await failure(click);
+
+    expect(error.message).toBe('<div class="modal"> intercepts pointer events');
+    expect(error[ERROR_DETAILS]).toEqual({
+      recorder: {
+        act: {
+          error: '<div class="modal"> intercepts pointer events',
+          covered,
+          elapsed_ms: expect.any(Number),
+        },
+      },
+    });
+    expect(actions.browserRecorderHitTest.mock.calls[0]?.[1]).toMatchObject({
+      targetId: "t1",
+      ref: "e5",
+    });
+  });
+
+  it("records a failed act without a covering element when the hit-test finds none", async () => {
+    enableRecorder();
+    actions.browserAct.mockRejectedValueOnce(new Error('Unknown ref "e5".'));
+    actions.browserRecorderHitTest.mockRejectedValueOnce(new Error("hit-test failed"));
+
+    const error = await failure(click);
+
+    expect(error[ERROR_DETAILS]).toEqual({
+      recorder: { act: { error: 'Unknown ref "e5".', elapsed_ms: expect.any(Number) } },
+    });
+  });
+
+  it("leaves act results and failures untouched when disabled", async () => {
+    actions.browserAct.mockResolvedValueOnce({ ok: true, targetId: "t1" });
+    const result = await execute(click);
+    actions.browserAct.mockRejectedValueOnce(new Error("timeout"));
+    const error = await failure(click);
+
+    expect(result.details).not.toHaveProperty("recorder");
+    expect(Object.getOwnPropertySymbols(error)).not.toContain(ERROR_DETAILS);
+    expect(actions.browserRecorderHitTest).not.toHaveBeenCalled();
+  });
+});
+
 describe("recorder text helpers", () => {
   it("counts the shared prefix in UTF-16 code units", () => {
     expect(receivedPrefixChars("ab🙂c\n[truncated]", "ab🙂cdef")).toBe(5);

@@ -13,7 +13,11 @@ import {
   truncateSanitizedExternalContent,
 } from "openclaw/plugin-sdk/security-runtime";
 import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
-import { browserRecorderCapture, getRuntimeConfig } from "./browser-tool.runtime.js";
+import {
+  browserRecorderCapture,
+  browserRecorderHitTest,
+  getRuntimeConfig,
+} from "./browser-tool.runtime.js";
 import { readRoleSnapshotLineIdentity } from "./browser/pw-role-snapshot.js";
 import { neutralizeMediaDirectives } from "./browser/vision.js";
 
@@ -21,6 +25,9 @@ const logger = createSubsystemLogger("browser");
 const RECORDER_DIR = "recorder";
 const RECEIVED_FILE = "received.txt";
 const OUTLINE_FULL_FILE = "outline-full.txt";
+// Core's tool adapter reads this registered symbol (src/agents/tool-error-details.ts) and
+// puts the record a failure carries in its error result's details, the error text unchanged.
+const TOOL_ERROR_DETAILS = Symbol.for("openclaw.toolErrorDetails");
 
 export type BrowserRecorderSettings = {
   enabled: boolean;
@@ -224,4 +231,64 @@ export async function recordPageRead(params: {
     );
     return undefined;
   }
+}
+
+/** The `details.recorder.act` block of an act result: how long the act took and why it failed. */
+export type BrowserRecorderAct = {
+  error?: string;
+  covered?: { role: string; name: string; ref?: string; box: object };
+  elapsed_ms: number;
+};
+
+/**
+ * Describe a failed act for the record: its error, the element on top at its target's
+ * centre when that is not the target, and the time it took. Never throws past an abort.
+ */
+export async function describeActFailure(params: {
+  error: unknown;
+  request: Record<string, unknown>;
+  elapsedMs: number;
+  baseUrl?: string;
+  profile?: string;
+  signal?: AbortSignal;
+}): Promise<BrowserRecorderAct> {
+  const ref = typeof params.request.ref === "string" ? params.request.ref : undefined;
+  const selector =
+    typeof params.request.selector === "string" ? params.request.selector : undefined;
+  let covered: BrowserRecorderAct["covered"];
+  if (ref || selector) {
+    try {
+      covered = (
+        await browserRecorderHitTest(params.baseUrl, {
+          targetId:
+            typeof params.request.targetId === "string" ? params.request.targetId : undefined,
+          ref,
+          selector,
+          profile: params.profile,
+          signal: params.signal,
+        })
+      ).covered;
+    } catch (err) {
+      params.signal?.throwIfAborted();
+      logger.warn(`browser recorder: act hit-test failed: ${formatErrorMessage(err)}`);
+    }
+  }
+  return {
+    error: formatErrorMessage(params.error),
+    ...(covered ? { covered } : {}),
+    elapsed_ms: Math.round(params.elapsedMs),
+  };
+}
+
+/** Attach an act's record to the failure it ends in, for core to put in the result's details. */
+export function withActRecord<E>(error: E, act: BrowserRecorderAct): E {
+  if (error instanceof Error && Object.isExtensible(error)) {
+    Object.defineProperty(error, TOOL_ERROR_DETAILS, {
+      configurable: true,
+      enumerable: false,
+      value: { recorder: { act } },
+      writable: true,
+    });
+  }
+  return error;
 }

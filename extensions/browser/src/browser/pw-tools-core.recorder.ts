@@ -1,7 +1,7 @@
 /** Page geometry and a full-page capture for the browser page-read recorder. */
 import type { Page } from "playwright-core";
 import { getPageForTargetId, refLocator, restoreRoleRefsForTarget } from "./pw-session.js";
-import { withPageScopedCdpClient } from "./pw-session.page-cdp.js";
+import { BROWSER_REF_MARKER_ATTRIBUTE, withPageScopedCdpClient } from "./pw-session.page-cdp.js";
 
 export type RecorderBox = { x: number; y: number; w: number; h: number };
 
@@ -131,4 +131,109 @@ async function measureNodesViaCdp(
       return measured;
     },
   });
+}
+
+/** The element on top at an act target's centre, when it is not the target itself. */
+export type RecorderCovered = {
+  role: string;
+  name: string;
+  ref?: string;
+  box: RecorderBox;
+};
+
+/**
+ * Hit-test the centre of an act's target, read-only: which element the page would hand
+ * the pointer there. A target with no box (detached, not found, not rendered) has no
+ * centre, so nothing is reported as covering it.
+ */
+export async function hitTestRecorderViaPlaywright(opts: {
+  cdpUrl: string;
+  targetId?: string;
+  ref?: string;
+  selector?: string;
+  signal?: AbortSignal;
+}): Promise<{ covered?: RecorderCovered }> {
+  const page = await getPageForTargetId(opts);
+  restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
+  let locator: ReturnType<typeof refLocator>;
+  try {
+    locator = opts.ref
+      ? refLocator(page, opts.ref)
+      : page.locator(opts.selector ?? ":not(*)").first();
+  } catch {
+    return {};
+  }
+  const box = await locator.boundingBox({ timeout: BOX_TIMEOUT_MS }).catch(() => null);
+  const target = box
+    ? await locator.elementHandle({ timeout: BOX_TIMEOUT_MS }).catch(() => null)
+    : null;
+  if (!box || !target) {
+    return {};
+  }
+  opts.signal?.throwIfAborted();
+  try {
+    const covered = await page.evaluate(
+      ({ x, y, targetElement, marker }) => {
+        const hit = document.elementFromPoint(x, y);
+        if (
+          !hit ||
+          hit === targetElement ||
+          (targetElement instanceof Node && targetElement.contains(hit))
+        ) {
+          return null;
+        }
+        const element = hit.closest(`[${marker}]`) ?? hit;
+        const tag = element.tagName.toLowerCase();
+        const implicit: Record<string, string> = {
+          a: element.hasAttribute("href") ? "link" : "generic",
+          button: "button",
+          dialog: "dialog",
+          footer: "contentinfo",
+          header: "banner",
+          iframe: "iframe",
+          img: "img",
+          input: "textbox",
+          nav: "navigation",
+          select: "combobox",
+          textarea: "textbox",
+        };
+        const role =
+          element.getAttribute("role") ??
+          (/^h[1-6]$/.test(tag) ? "heading" : (implicit[tag] ?? "generic"));
+        const name = (
+          element.getAttribute("aria-label") ??
+          element.getAttribute("alt") ??
+          element.getAttribute("title") ??
+          // oxlint-disable-next-line unicorn/prefer-dom-node-text-content -- The name is the rendered text, as the outline gives it.
+          (element as HTMLElement).innerText ??
+          ""
+        )
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 200);
+        const rect = element.getBoundingClientRect();
+        const ref = element.getAttribute(marker);
+        return {
+          role,
+          name,
+          ...(ref ? { ref } : {}),
+          box: {
+            x: rect.x + window.scrollX,
+            y: rect.y + window.scrollY,
+            w: rect.width,
+            h: rect.height,
+          },
+        };
+      },
+      {
+        x: box.x + box.width / 2,
+        y: box.y + box.height / 2,
+        targetElement: target,
+        marker: BROWSER_REF_MARKER_ATTRIBUTE,
+      },
+    );
+    return covered ? { covered } : {};
+  } finally {
+    void target.dispose().catch(() => {});
+  }
 }

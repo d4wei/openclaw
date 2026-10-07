@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import path from "node:path";
+import nodePath from "node:path";
 import { ensureMediaDir, saveMediaBuffer } from "openclaw/plugin-sdk/media-runtime";
 import { formatErrorMessage } from "openclaw/plugin-sdk/security-runtime";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -142,8 +142,21 @@ export function registerBrowserAgentDebugRoutes(
         });
         await ensureMediaDir();
         const saved = await saveMediaBuffer(buffer, "image/png", "browser", buffer.byteLength);
-        return { ...capture, path: path.resolve(saved.path) };
+        return { ...capture, path: nodePath.resolve(saved.path) };
       };
+    },
+    EXISTING_SESSION_LIMITS.text,
+  );
+
+  register(
+    "post",
+    "/recorder/hit-test",
+    "page-read recorder",
+    (input) => {
+      const ref = normalizeOptionalString(input.ref);
+      const selector = normalizeOptionalString(input.selector);
+      return async (pw, { cdpUrl, targetId, signal }) =>
+        await pw.hitTestRecorderViaPlaywright({ cdpUrl, targetId, ref, selector, signal });
     },
     EXISTING_SESSION_LIMITS.text,
   );

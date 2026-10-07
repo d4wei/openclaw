@@ -38,6 +38,7 @@ import {
   getInternalToolExecutionPreparer,
 } from "./runtime/internal-hooks.js";
 import type { ToolDefinition } from "./sessions/index.js";
+import { readToolErrorDetails } from "./tool-error-details.js";
 import { readToolOperatorHint } from "./tool-operator-hint.js";
 import { normalizeToolPolicyName } from "./tool-policy.js";
 import { jsonResult, payloadTextResult, ToolInputError } from "./tools/common.js";
@@ -222,12 +223,16 @@ function normalizeToolExecutionResult(params: {
 function buildToolExecutionErrorResult(params: {
   toolName: string;
   message: string;
+  details?: Record<string, unknown>;
 }): AgentToolResult<unknown> {
-  return jsonResult({
+  const payload = {
     status: "error",
     tool: params.toolName,
     error: params.message,
-  });
+  };
+  const result = jsonResult(payload);
+  // Details a failure carries for the record stay out of the model-facing text.
+  return params.details ? { ...result, details: { ...params.details, ...payload } } : result;
 }
 
 async function executeAdaptedToolOperation(params: {
@@ -261,9 +266,11 @@ async function executeAdaptedToolOperation(params: {
     logError(
       `[tools] ${params.normalizedToolName} failed: ${described.message}${operatorHint} ${inputPreview}`,
     );
+    const details = readToolErrorDetails(err);
     return buildToolExecutionErrorResult({
       toolName: params.normalizedToolName,
       message: described.message,
+      ...(details ? { details } : {}),
     });
   }
 }

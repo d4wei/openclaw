@@ -326,6 +326,29 @@ export async function browserRecorderCapture(
   );
 }
 
+/** Hit-test an act target's centre for the page-read recorder. */
+export async function browserRecorderHitTest(
+  baseUrl: BrowserClientTarget,
+  opts: BrowserActionOptions & { ref?: string; selector?: string },
+): Promise<{
+  ok: true;
+  targetId: string;
+  covered?: {
+    role: string;
+    name: string;
+    ref?: string;
+    box: { x: number; y: number; w: number; h: number };
+  };
+}> {
+  return await postBrowserJson(
+    baseUrl,
+    "/recorder/hit-test",
+    { targetId: opts.targetId, ref: opts.ref, selector: opts.selector },
+    browserClientTimeout(baseUrl, undefined, 10000),
+    opts,
+  );
+}
+
 export async function browserEmulateSetting(
   baseUrl: BrowserClientTarget,
   opts: {
