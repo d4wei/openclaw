@@ -131,6 +131,49 @@ async function rescaleAnnotationsForNormalization(params: {
   return scaleAnnotations(params.annotations, next.width / orig.width, next.height / orig.height);
 }
 
+/**
+ * The full tree beside a narrowed CDP role snapshot, for the recorder. Role refs are
+ * numbered over the whole tree before a mode narrows the rendering, so a second read
+ * of an unchanged page repeats them; the refs are neither stored nor marked, and a
+ * read whose refs disagree with the model's is dropped rather than written misnumbered.
+ */
+async function readFullTreeForRecorder(params: {
+  wsUrl: string;
+  lookup?: Parameters<typeof snapshotRoleViaCdp>[0]["lookup"];
+  urls?: boolean;
+  recurseIframes: boolean;
+  timeoutMs?: number;
+  refs: Record<string, { role: string; name?: string }>;
+  signal: AbortSignal;
+}): Promise<{ fullSnapshot: string; fullNodes: Record<string, number> } | undefined> {
+  try {
+    const full = await snapshotRoleViaCdp({
+      wsUrl: params.wsUrl,
+      ...(params.lookup ? { lookup: params.lookup } : {}),
+      urls: params.urls,
+      recurseIframes: params.recurseIframes,
+      timeoutMs: params.timeoutMs,
+      options: {},
+    });
+    const agrees = Object.entries(params.refs).every(
+      ([ref, info]) => full.refs[ref]?.role === info.role && full.refs[ref]?.name === info.name,
+    );
+    if (!agrees) {
+      return undefined;
+    }
+    const fullNodes: Record<string, number> = {};
+    for (const [ref, info] of Object.entries(full.refs)) {
+      if (info.backendDOMNodeId !== undefined) {
+        fullNodes[ref] = info.backendDOMNodeId;
+      }
+    }
+    return { fullSnapshot: full.snapshot, fullNodes };
+  } catch {
+    params.signal.throwIfAborted();
+    return undefined;
+  }
+}
+
 export function registerBrowserAgentSnapshotRoutes(
   app: BrowserRouteRegistrar,
   ctx: BrowserRouteContext,
@@ -429,7 +472,10 @@ export function registerBrowserAgentSnapshotRoutes(
             });
           }
           await req.assertCurrent?.(profileCtx.profile);
-          const jsonSnapshot = ({ untruncatedSnapshot, ...snapshot }: Record<string, unknown>) =>
+          const jsonSnapshot = (
+            { untruncatedSnapshot, ...snapshot }: Record<string, unknown>,
+            full?: { fullSnapshot: string; fullNodes: Record<string, number> },
+          ) =>
             res.json({
               ok: true,
               format: plan.format,
@@ -437,7 +483,7 @@ export function registerBrowserAgentSnapshotRoutes(
               url: tab.url,
               ...snapshot,
               ...(plan.recorder
-                ? { recorder: { maxChars: plan.resolvedMaxChars, untruncatedSnapshot } }
+                ? { recorder: { maxChars: plan.resolvedMaxChars, untruncatedSnapshot, ...full } }
                 : {}),
             });
           const deltaFamily: SnapshotDeltaFamily | undefined =
@@ -632,11 +678,13 @@ export function registerBrowserAgentSnapshotRoutes(
                 ? tab.wsUrl
                 : null;
             let usedCdpRoleSnapshot = false;
+            let cdpRecurseIframes = true;
             let cdpCaptureDeadlineMs: number | undefined;
             const cdpRoleSnapshot = async (recurseIframes = true) => {
               if (!cdpRoleWsUrl) {
                 return null;
               }
+              cdpRecurseIframes = recurseIframes;
               cdpCaptureDeadlineMs = performance.now() + (plan.timeoutMs ?? 5_000);
               const snapshot = await snapshotRoleViaCdp({
                 wsUrl: cdpRoleWsUrl,
@@ -715,13 +763,28 @@ export function registerBrowserAgentSnapshotRoutes(
               image = await saveBrowserScreenshot(labeled, "png");
             }
 
+            const full =
+              plan.recorder && !plan.fullTree && usedCdpRoleSnapshot && cdpRoleWsUrl
+                ? await readFullTreeForRecorder({
+                    wsUrl: cdpRoleWsUrl,
+                    lookup: tab.wsLookup,
+                    urls: plan.urls,
+                    recurseIframes: cdpRecurseIframes,
+                    timeoutMs: plan.timeoutMs,
+                    refs: snap.refs ?? {},
+                    signal,
+                  })
+                : undefined;
             await assertDocumentIdentityUnchanged();
             deltaState.record(snap.refs ?? {});
-            return jsonSnapshot({
-              ...browserStateFields,
-              ...image,
-              ...snap,
-            });
+            return jsonSnapshot(
+              {
+                ...browserStateFields,
+                ...image,
+                ...snap,
+              },
+              full,
+            );
           }
 
           const usePlaywrightAriaSnapshot = shouldUsePlaywrightForAriaSnapshot({

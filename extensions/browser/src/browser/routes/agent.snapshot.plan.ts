@@ -67,6 +67,9 @@ export function resolveSnapshotPlan(params: {
     format,
     mode,
     recorder: toBoolean(params.query.recorder) === true,
+    /** Whether the outline is the full tree: no mode, interactive, compact or depth narrowing it. */
+    fullTree:
+      mode !== "efficient" && interactive !== true && compact !== true && depth === undefined,
     labels,
     urls,
     limit,

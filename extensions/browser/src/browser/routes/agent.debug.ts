@@ -123,11 +123,21 @@ export function registerBrowserAgentDebugRoutes(
       const refs = Array.isArray(input.refs)
         ? input.refs.filter((ref): ref is string => typeof ref === "string")
         : [];
+      const nodes =
+        input.nodes && typeof input.nodes === "object" && !Array.isArray(input.nodes)
+          ? Object.fromEntries(
+              Object.entries(input.nodes).filter(
+                (entry): entry is [string, number] =>
+                  typeof entry[1] === "number" && Number.isSafeInteger(entry[1]),
+              ),
+            )
+          : undefined;
       return async (pw, { cdpUrl, targetId, signal }) => {
         const { buffer, ...capture } = await pw.captureRecorderViaPlaywright({
           cdpUrl,
           targetId,
           refs,
+          nodes,
           signal,
         });
         await ensureMediaDir();

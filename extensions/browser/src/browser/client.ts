@@ -121,8 +121,17 @@ export type SnapshotResult =
       imageType?: "png" | "jpeg";
       blockedByDialog?: boolean;
       browserState?: unknown;
-      /** Present only when the request asked for the recorder. */
-      recorder?: { maxChars?: number; untruncatedSnapshot?: string };
+      /**
+       * Present only when the request asked for the recorder. `fullSnapshot` is the full
+       * tree read beside a narrowed mode, its refs the same as the snapshot's; `fullNodes`
+       * gives the DOM identity of each of its refs.
+       */
+      recorder?: {
+        maxChars?: number;
+        untruncatedSnapshot?: string;
+        fullSnapshot?: string;
+        fullNodes?: Record<string, number>;
+      };
     };
 
 export async function browserStatus(

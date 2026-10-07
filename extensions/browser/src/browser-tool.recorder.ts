@@ -20,6 +20,7 @@ import { neutralizeMediaDirectives } from "./browser/vision.js";
 const logger = createSubsystemLogger("browser");
 const RECORDER_DIR = "recorder";
 const RECEIVED_FILE = "received.txt";
+const OUTLINE_FULL_FILE = "outline-full.txt";
 
 export type BrowserRecorderSettings = {
   enabled: boolean;
@@ -141,6 +142,11 @@ export async function recordPageRead(params: {
    * page it was selected from was cut.
    */
   filtered?: { truncated: boolean };
+  /**
+   * The full tree read beside a narrowed snapshot mode, in the same refs; `nodes` gives
+   * the DOM identity of refs the action cache does not hold, so they can be boxed too.
+   */
+  full?: { untruncated: string; nodes?: Record<string, number> };
   capChars: number;
   targetId?: string;
   baseUrl?: string;
@@ -152,12 +158,20 @@ export async function recordPageRead(params: {
     const receivedChars = params.filtered
       ? params.received.length
       : receivedPrefixChars(params.received, outline);
+    const outlineFull = params.full ? recorderOutline(params.full.untruncated) : undefined;
+    // boxes.json covers every ref either outline carries; the model's outline names it first.
     const refs = outlineRefs(outline);
+    for (const [ref, identity] of outlineFull ? outlineRefs(outlineFull) : []) {
+      if (!refs.has(ref)) {
+        refs.set(ref, identity);
+      }
+    }
     const capture = await browserRecorderCapture(params.baseUrl, {
       targetId: params.targetId,
       profile: params.profile,
       signal: params.signal,
       refs: [...refs.keys()],
+      ...(params.full?.nodes ? { nodes: params.full.nodes } : {}),
     });
     const root = path.join(resolveStateDir(process.env), RECORDER_DIR);
     const { n, name } = await allocateCaptureDir(root, params.action);
@@ -187,10 +201,14 @@ export async function recordPageRead(params: {
       page: capture.page,
       args: redactArgs(params.args),
       ...(params.filtered ? { received: RECEIVED_FILE } : {}),
+      ...(outlineFull !== undefined ? { outline_full: OUTLINE_FULL_FILE } : {}),
     };
     await Promise.all([
       fs.writeFile(path.join(dir, "outline.txt"), outline),
       ...(params.filtered ? [fs.writeFile(path.join(dir, RECEIVED_FILE), params.received)] : []),
+      ...(outlineFull !== undefined
+        ? [fs.writeFile(path.join(dir, OUTLINE_FULL_FILE), outlineFull)]
+        : []),
       fs.writeFile(
         path.join(dir, "boxes.json"),
         `${JSON.stringify({ url: capture.url, refs: boxes }, null, 1)}\n`,

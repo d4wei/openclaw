@@ -306,7 +306,7 @@ export async function browserPageText(
 /** Measure refs and save a full-page PNG for the page-read recorder. */
 export async function browserRecorderCapture(
   baseUrl: BrowserClientTarget,
-  opts: BrowserActionOptions & { refs: string[] },
+  opts: BrowserActionOptions & { refs: string[]; nodes?: Record<string, number> },
 ): Promise<{
   ok: true;
   targetId: string;
@@ -320,7 +320,7 @@ export async function browserRecorderCapture(
   return await postBrowserJson(
     baseUrl,
     "/recorder/capture",
-    { targetId: opts.targetId, refs: opts.refs },
+    { targetId: opts.targetId, refs: opts.refs, ...(opts.nodes ? { nodes: opts.nodes } : {}) },
     browserClientTimeout(baseUrl, undefined, 60000),
     opts,
   );

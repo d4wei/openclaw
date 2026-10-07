@@ -332,6 +332,10 @@ export async function executeSnapshotAction(params: {
     recording && snapshot.format === "ai"
       ? (snapshot.recorder?.untruncatedSnapshot ?? snapshot.snapshot ?? "")
       : undefined;
+  const recorderFull =
+    snapshot.format === "ai" && snapshot.recorder?.fullSnapshot !== undefined
+      ? { untruncated: snapshot.recorder.fullSnapshot, nodes: snapshot.recorder.fullNodes }
+      : undefined;
   const recordRead = async (
     copy: Pick<Parameters<typeof recordPageRead>[0], "received" | "capChars" | "filtered">,
   ) =>
@@ -340,6 +344,7 @@ export async function executeSnapshotAction(params: {
           action: params.recorderCall?.action ?? "snapshot",
           args: params.recorderCall?.args ?? input,
           untruncated: recorderSource,
+          ...(recorderFull ? { full: recorderFull } : {}),
           ...copy,
           targetId: snapshot.targetId,
           baseUrl,

@@ -52,6 +52,9 @@ async function readCapture(dir: string) {
     meta: JSON.parse(await fs.readFile(path.join(root, "meta.json"), "utf8")),
     png: await fs.readFile(path.join(root, "page.png")),
     received: await fs.readFile(path.join(root, "received.txt"), "utf8").catch(() => undefined),
+    outlineFull: await fs
+      .readFile(path.join(root, "outline-full.txt"), "utf8")
+      .catch(() => undefined),
   };
 }
 
@@ -158,6 +161,47 @@ describe("browser recorder", () => {
     expect(capture.png.toString()).toBe("png-bytes");
     expect(capture.received).toBeUndefined();
     expect(capture.meta).not.toHaveProperty("received");
+    expect(capture.outlineFull).toBeUndefined();
+    expect(capture.meta).not.toHaveProperty("outline_full");
+  });
+
+  it("writes the full tree beside a narrowed outline and boxes the refs of both", async () => {
+    enableRecorder();
+    const narrowed = OUTLINE_LINES.slice(0, 3).join("\n");
+    const full = [
+      '- heading "Results" [ref=e901]',
+      ...OUTLINE_LINES.slice(0, 3),
+      '- paragraph "Gentle on skin" [ref=e902]',
+    ].join("\n");
+    client.browserSnapshot.mockResolvedValueOnce({
+      ok: true,
+      format: "ai",
+      targetId: "t1",
+      url: "https://shop.example/",
+      snapshot: narrowed,
+      recorder: { untruncatedSnapshot: undefined, fullSnapshot: full, fullNodes: { e902: 77 } },
+    });
+
+    const result = await execute({ action: "snapshot", targetId: "t1", mode: "efficient" });
+    const capture = await readCapture("recorder/0001-snapshot");
+
+    expect(capture.outline).toBe(narrowed);
+    expect(capture.outlineFull).toBe(full);
+    expect(capture.meta).toMatchObject({
+      outline_full: "outline-full.txt",
+      total_chars: narrowed.length,
+      truncated: false,
+      args: { mode: "efficient" },
+    });
+    expect(result.details).toMatchObject({
+      recorder: { received_chars: narrowed.length, total_chars: narrowed.length },
+    });
+    expect(actions.browserRecorderCapture.mock.calls[0]?.[1]).toMatchObject({
+      refs: ["e1", "e2", "e3", "e901", "e902"],
+      nodes: { e902: 77 },
+    });
+    expect(Object.keys(capture.boxes.refs)).toEqual(["e1", "e2", "e3", "e901", "e902"]);
+    expect(capture.boxes.refs.e902).toMatchObject({ role: "paragraph", name: "Gentle on skin" });
   });
 
   it("captures a query-filtered snapshot from the whole outline, its matches beside it", async () => {
