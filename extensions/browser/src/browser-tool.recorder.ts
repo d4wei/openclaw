@@ -16,6 +16,7 @@ import { resolveStateDir } from "openclaw/plugin-sdk/state-paths";
 import {
   browserRecorderCapture,
   browserRecorderHitTest,
+  browserRecorderLocate,
   getRuntimeConfig,
 } from "./browser-tool.runtime.js";
 import { readRoleSnapshotLineIdentity } from "./browser/pw-role-snapshot.js";
@@ -233,12 +234,96 @@ export async function recordPageRead(params: {
   }
 }
 
-/** The `details.recorder.act` block of an act result: how long the act took and why it failed. */
+/** Where one act item's target was on the page before the act ran, in page pixels. */
+export type BrowserRecorderTarget = Awaited<
+  ReturnType<typeof browserRecorderLocate>
+>["targets"][number];
+
+/**
+ * The `details.recorder.act` block of an act result: where its targets were, how long the
+ * act took and why it failed.
+ */
 export type BrowserRecorderAct = {
   error?: string;
   covered?: { role: string; name: string; ref?: string; box: object };
+  target?: BrowserRecorderTarget;
+  targets?: BrowserRecorderTarget[];
   elapsed_ms: number;
 };
+
+type ActTargetItem = { ref?: string; selector?: string; x?: number; y?: number };
+
+function readItemString(value: unknown): string | undefined {
+  return typeof value === "string" && value ? value : undefined;
+}
+
+function isActItem(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** What each item of an act names, in the order they run: a batch's and a fill's one by one. */
+function actTargetItems(request: Record<string, unknown>): ActTargetItem[] {
+  if (Array.isArray(request.actions)) {
+    return request.actions.filter(isActItem).flatMap(actTargetItems);
+  }
+  if (Array.isArray(request.fields)) {
+    return request.fields.filter(isActItem).map((field) => ({ ref: readItemString(field.ref) }));
+  }
+  switch (request.kind) {
+    case "clickCoords":
+      return [
+        typeof request.x === "number" && typeof request.y === "number"
+          ? { x: request.x, y: request.y }
+          : {},
+      ];
+    case "drag":
+      return [
+        {
+          ref: readItemString(request.startRef),
+          selector: readItemString(request.startSelector),
+        },
+      ];
+    case "click":
+    case "type":
+    case "hover":
+    case "scrollIntoView":
+    case "select":
+      return [{ ref: readItemString(request.ref), selector: readItemString(request.selector) }];
+    default:
+      return [{}];
+  }
+}
+
+/**
+ * Locate an act's targets before it runs: `target` for a plain act, `targets` for a batch
+ * or a fill, one per item in the order they run, each located on the page as it stood
+ * before the first ran. Empty when the lookup fails; never throws past an abort.
+ */
+export async function locateActTargets(params: {
+  request: Record<string, unknown>;
+  baseUrl?: string;
+  profile?: string;
+  signal?: AbortSignal;
+}): Promise<Pick<BrowserRecorderAct, "target" | "targets">> {
+  const items = actTargetItems(params.request);
+  const listed = Array.isArray(params.request.actions) || Array.isArray(params.request.fields);
+  try {
+    const { targets } = await browserRecorderLocate(params.baseUrl, {
+      targetId: readItemString(params.request.targetId),
+      items,
+      profile: params.profile,
+      signal: params.signal,
+    });
+    if (!Array.isArray(targets) || targets.length !== items.length) {
+      return {};
+    }
+    return listed ? { targets } : { target: targets[0] };
+  } catch (err) {
+    params.signal?.throwIfAborted();
+    logger.warn(`browser recorder: act target lookup failed: ${formatErrorMessage(err)}`);
+    return {};
+  }
+}
 
 /**
  * Describe a failed act for the record: its error, the element on top at its target's
@@ -247,6 +332,7 @@ export type BrowserRecorderAct = {
 export async function describeActFailure(params: {
   error: unknown;
   request: Record<string, unknown>;
+  located: Pick<BrowserRecorderAct, "target" | "targets">;
   elapsedMs: number;
   baseUrl?: string;
   profile?: string;
@@ -276,6 +362,7 @@ export async function describeActFailure(params: {
   return {
     error: formatErrorMessage(params.error),
     ...(covered ? { covered } : {}),
+    ...params.located,
     elapsed_ms: Math.round(params.elapsedMs),
   };
 }

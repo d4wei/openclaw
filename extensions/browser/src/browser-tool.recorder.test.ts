@@ -452,6 +452,130 @@ describe("browser recorder act results", () => {
     expect(result.details).not.toHaveProperty("recorder");
     expect(Object.getOwnPropertySymbols(error)).not.toContain(ERROR_DETAILS);
     expect(actions.browserRecorderHitTest).not.toHaveBeenCalled();
+    expect(actions.browserRecorderLocate).not.toHaveBeenCalled();
+  });
+});
+
+describe("browser recorder act targets", () => {
+  const ERROR_DETAILS = Symbol.for("openclaw.toolErrorDetails");
+  const view = { scroll: { x: 0, y: 1200 }, viewport: { w: 1280, h: 720 } };
+  const button = { ref: "e5", box: { x: 40, y: 1500, w: 120, h: 32 }, ...view };
+
+  function actRecord(result: { details?: unknown }) {
+    return (result.details as { recorder: { act: Record<string, unknown> } }).recorder.act;
+  }
+
+  it("records where a plain act's target was before the act ran", async () => {
+    enableRecorder();
+    actions.browserRecorderLocate.mockResolvedValueOnce({
+      ok: true,
+      targetId: "t1",
+      targets: [button],
+    });
+    actions.browserAct.mockResolvedValueOnce({ ok: true, targetId: "t1" });
+
+    const result = await execute({
+      action: "act",
+      request: { kind: "click", ref: "e5", targetId: "t1" },
+    });
+
+    expect(actRecord(result)).toEqual({ target: button, elapsed_ms: expect.any(Number) });
+    expect(actions.browserRecorderLocate.mock.calls[0]?.[1]).toMatchObject({
+      targetId: "t1",
+      items: [{ ref: "e5" }],
+    });
+    expect(actions.browserRecorderLocate.mock.invocationCallOrder[0]).toBeLessThan(
+      actions.browserAct.mock.invocationCallOrder[0] ?? 0,
+    );
+  });
+
+  it("locates a batch item by item, a fill field by field, a point as given", async () => {
+    enableRecorder();
+    const point = {
+      ref: null,
+      box: { x: 880, y: 1670, w: 40, h: 40 },
+      point: { x: 898, y: 1687 },
+      ...view,
+    };
+    const none = { ref: null, box: null, ...view };
+    const targets = [point, button, { ...button, ref: "e6" }, none, { ...none, ref: "e9" }];
+    actions.browserRecorderLocate.mockResolvedValueOnce({ ok: true, targetId: "t1", targets });
+    actions.browserAct.mockResolvedValueOnce({ ok: true, targetId: "t1" });
+
+    const result = await execute({
+      action: "act",
+      request: {
+        kind: "batch",
+        targetId: "t1",
+        actions: [
+          { kind: "clickCoords", x: 898, y: 487 },
+          {
+            kind: "fill",
+            fields: [
+              { ref: "e5", type: "text", value: "Sofia" },
+              { ref: "e6", type: "text", value: "1" },
+            ],
+          },
+          { kind: "press", key: "Enter" },
+          { kind: "type", selector: "#search", ref: "e9", text: "wash" },
+        ],
+      },
+    });
+
+    expect(actRecord(result)).toEqual({ targets, elapsed_ms: expect.any(Number) });
+    expect(actions.browserRecorderLocate.mock.calls[0]?.[1]).toMatchObject({
+      items: [
+        { x: 898, y: 487 },
+        { ref: "e5" },
+        { ref: "e6" },
+        {},
+        { ref: "e9", selector: "#search" },
+      ],
+    });
+  });
+
+  it("records a failed act's target beside its error", async () => {
+    enableRecorder();
+    actions.browserRecorderLocate.mockResolvedValueOnce({
+      ok: true,
+      targetId: "t1",
+      targets: [{ ...button, ref: null }],
+    });
+    actions.browserAct.mockRejectedValueOnce(new Error("Timeout 8000ms exceeded."));
+    let error: (Error & { [ERROR_DETAILS]?: unknown }) | undefined;
+    try {
+      await execute({ action: "act", request: { kind: "click", selector: ".add-to-cart" } });
+    } catch (caught) {
+      error = caught as Error & { [ERROR_DETAILS]?: unknown };
+    }
+
+    expect(error?.message).toBe("Timeout 8000ms exceeded.");
+    expect(error?.[ERROR_DETAILS]).toEqual({
+      recorder: {
+        act: {
+          error: "Timeout 8000ms exceeded.",
+          target: { ...button, ref: null },
+          elapsed_ms: expect.any(Number),
+        },
+      },
+    });
+    expect(actions.browserRecorderLocate.mock.calls[0]?.[1]).toMatchObject({
+      items: [{ selector: ".add-to-cart" }],
+    });
+  });
+
+  it("runs the act without a target when locating fails or answers short", async () => {
+    enableRecorder();
+    actions.browserRecorderLocate.mockRejectedValueOnce(new Error("locate failed"));
+    actions.browserAct.mockResolvedValueOnce({ ok: true, targetId: "t1" });
+    const failed = await execute({ action: "act", request: { kind: "click", ref: "e5" } });
+    actions.browserRecorderLocate.mockResolvedValueOnce({ ok: true, targetId: "t1", targets: [] });
+    actions.browserAct.mockResolvedValueOnce({ ok: true, targetId: "t1" });
+    const short = await execute({ action: "act", request: { kind: "click", ref: "e5" } });
+
+    expect(actRecord(failed)).toEqual({ elapsed_ms: expect.any(Number) });
+    expect(actRecord(short)).toEqual({ elapsed_ms: expect.any(Number) });
+    expect(actions.browserAct).toHaveBeenCalledTimes(2);
   });
 });
 

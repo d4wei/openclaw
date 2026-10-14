@@ -105,6 +105,10 @@ const browserActionsMocks = vi.hoisted(() => ({
     ok: true,
     targetId: "t1",
   })),
+  browserRecorderLocate: vi.fn(async (..._args: unknown[]): Promise<Record<string, unknown>> => ({
+    ok: true,
+    targetId: "t1",
+  })),
   browserEmulateSetting: vi.fn(async (..._args: unknown[]) => ({ ok: true, targetId: "t1" })),
   browserNavigate: vi.fn(async (): Promise<Record<string, unknown>> => ({ ok: true })),
   browserDownload: vi.fn(async () => ({

@@ -161,6 +161,29 @@ export function registerBrowserAgentDebugRoutes(
     EXISTING_SESSION_LIMITS.text,
   );
 
+  register(
+    "post",
+    "/recorder/locate",
+    "page-read recorder",
+    (input) => {
+      const items = (Array.isArray(input.items) ? input.items : []).map((item) => {
+        const given = item && typeof item === "object" ? (item as Record<string, unknown>) : {};
+        const read: { ref?: string; selector?: string; x?: number; y?: number } = {
+          ref: normalizeOptionalString(given.ref),
+          selector: normalizeOptionalString(given.selector),
+        };
+        if (typeof given.x === "number" && typeof given.y === "number") {
+          read.x = given.x;
+          read.y = given.y;
+        }
+        return read;
+      });
+      return async (pw, { cdpUrl, targetId, signal }) =>
+        await pw.locateRecorderTargetsViaPlaywright({ cdpUrl, targetId, items, signal });
+    },
+    EXISTING_SESSION_LIMITS.text,
+  );
+
   register("get", "/dialogs", "dialog state", () => async (pw, { cdpUrl, targetId }) => ({
     browserState: await pw.getObservedBrowserStateViaPlaywright({
       cdpUrl,

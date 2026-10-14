@@ -8,6 +8,7 @@ import { formatErrorMessage } from "openclaw/plugin-sdk/security-runtime";
 import type { BrowserProxyRequest } from "./browser-node-proxy.js";
 import {
   describeActFailure,
+  locateActTargets,
   recordPageRead,
   resolveBrowserRecorderSettings,
   withActRecord,
@@ -435,13 +436,20 @@ type ActActionParams = {
 };
 
 /**
- * Run an act. With the recorder on, the result's `details.recorder` gains `act`: the
- * time the act took, and on failure its error and the element covering its target.
+ * Run an act. With the recorder on, the result's `details.recorder` gains `act`: where
+ * its targets were before it ran, the time it took, and on failure its error and the
+ * element covering its target.
  */
 export async function executeActAction(params: ActActionParams): Promise<AgentToolResult<unknown>> {
   if (!resolveBrowserRecorderSettings().enabled || params.proxyRequest) {
     return await runActAction(params);
   }
+  const located = await locateActTargets({
+    request: params.request,
+    baseUrl: params.baseUrl,
+    profile: params.profile,
+    signal: params.signal,
+  });
   const timing: { elapsedMs?: number } = {};
   const started = performance.now();
   let result: AgentToolResult<unknown>;
@@ -454,6 +462,7 @@ export async function executeActAction(params: ActActionParams): Promise<AgentTo
       await describeActFailure({
         error,
         request: params.request,
+        located,
         elapsedMs: timing.elapsedMs ?? performance.now() - started,
         baseUrl: params.baseUrl,
         profile: params.profile,
@@ -469,7 +478,10 @@ export async function executeActAction(params: ActActionParams): Promise<AgentTo
     details.recorder && typeof details.recorder === "object"
       ? (details.recorder as Record<string, unknown>)
       : {};
-  const act = { elapsed_ms: Math.round(timing.elapsedMs ?? performance.now() - started) };
+  const act = {
+    ...located,
+    elapsed_ms: Math.round(timing.elapsedMs ?? performance.now() - started),
+  };
   return { ...result, details: { ...details, recorder: { ...recorder, act } } };
 }
 
