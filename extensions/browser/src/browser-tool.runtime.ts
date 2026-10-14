@@ -50,6 +50,7 @@ export {
   browserPageText,
   browserRecorderCapture,
   browserRecorderHitTest,
+  browserRecorderLocate,
   browserEmulateSetting,
   browserDownload,
   browserNavigate,

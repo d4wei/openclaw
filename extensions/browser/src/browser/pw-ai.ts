@@ -54,6 +54,7 @@ import {
 import {
   captureRecorderViaPlaywright,
   hitTestRecorderViaPlaywright,
+  locateRecorderTargetsViaPlaywright,
 } from "./pw-tools-core.recorder.js";
 import { responseBodyViaPlaywright } from "./pw-tools-core.responses.js";
 import {
@@ -127,6 +128,7 @@ export const pwAi = {
   getPageTextViaPlaywright,
   captureRecorderViaPlaywright,
   hitTestRecorderViaPlaywright,
+  locateRecorderTargetsViaPlaywright,
   highlightViaPlaywright,
   hoverViaPlaywright,
   navigateViaPlaywright,

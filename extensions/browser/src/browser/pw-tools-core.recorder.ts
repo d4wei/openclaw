@@ -237,3 +237,89 @@ export async function hitTestRecorderViaPlaywright(opts: {
     void target.dispose().catch(() => {});
   }
 }
+
+/** What one act item names on the page: an element by ref or selector, or a viewport point. */
+export type RecorderTargetItem = { ref?: string; selector?: string; x?: number; y?: number };
+
+/** Where an act item's target is on the page, in page pixels, with the view it was found in. */
+export type RecorderTarget = {
+  ref: string | null;
+  box: RecorderBox | null;
+  /** A coordinate click's point. */
+  point?: { x: number; y: number };
+  scroll: { x: number; y: number };
+  viewport: { w: number; h: number };
+};
+
+/**
+ * Locate act targets before the act runs, read-only: an element named by ref or selector
+ * through the resolver actions use, a viewport point as its page point and the element the
+ * page hands the pointer there (or its nearest ancestor with a snapshot ref). An item that
+ * names neither, or a target that does not resolve, gets a null box.
+ */
+export async function locateRecorderTargetsViaPlaywright(opts: {
+  cdpUrl: string;
+  targetId?: string;
+  items: readonly RecorderTargetItem[];
+  signal?: AbortSignal;
+}): Promise<{ targets: RecorderTarget[] }> {
+  const page = await getPageForTargetId(opts);
+  restoreRoleRefsForTarget({ cdpUrl: opts.cdpUrl, targetId: opts.targetId, page });
+  const view = await page.evaluate(() => ({
+    x: window.visualViewport?.pageLeft ?? window.scrollX,
+    y: window.visualViewport?.pageTop ?? window.scrollY,
+    w: window.innerWidth,
+    h: window.innerHeight,
+  }));
+  const scroll = { x: view.x, y: view.y };
+  const viewport = { w: view.w, h: view.h };
+  const targets = await Promise.all(
+    opts.items.map(async (item): Promise<RecorderTarget> => {
+      if (typeof item.x === "number" && typeof item.y === "number") {
+        const hit = await page
+          .evaluate(
+            ({ x, y, marker }) => {
+              const found = document.elementFromPoint(x, y);
+              const element = found?.closest(`[${marker}]`) ?? found;
+              if (!element) {
+                return null;
+              }
+              const rect = element.getBoundingClientRect();
+              return {
+                ref: element.getAttribute(marker),
+                box: { x: rect.x, y: rect.y, w: rect.width, h: rect.height },
+              };
+            },
+            { x: item.x, y: item.y, marker: BROWSER_REF_MARKER_ATTRIBUTE },
+          )
+          .catch(() => null);
+        return {
+          ref: hit?.ref ?? null,
+          box: hit ? { ...hit.box, x: hit.box.x + view.x, y: hit.box.y + view.y } : null,
+          point: { x: item.x + view.x, y: item.y + view.y },
+          scroll,
+          viewport,
+        };
+      }
+      const ref = item.ref ?? null;
+      if (!item.ref && !item.selector) {
+        return { ref, box: null, scroll, viewport };
+      }
+      let locator: ReturnType<typeof refLocator>;
+      try {
+        locator = item.ref ? refLocator(page, item.ref) : page.locator(item.selector!).first();
+      } catch {
+        return { ref, box: null, scroll, viewport };
+      }
+      const box = await locator.boundingBox({ timeout: BOX_TIMEOUT_MS }).catch(() => null);
+      return {
+        ref,
+        box: box ? { x: box.x + view.x, y: box.y + view.y, w: box.width, h: box.height } : null,
+        scroll,
+        viewport,
+      };
+    }),
+  );
+  opts.signal?.throwIfAborted();
+  return { targets };
+}

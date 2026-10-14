@@ -349,6 +349,32 @@ export async function browserRecorderHitTest(
   );
 }
 
+/** Locate act targets on the page for the page-read recorder, before the act runs. */
+export async function browserRecorderLocate(
+  baseUrl: BrowserClientTarget,
+  opts: BrowserActionOptions & {
+    items: Array<{ ref?: string; selector?: string; x?: number; y?: number }>;
+  },
+): Promise<{
+  ok: true;
+  targetId: string;
+  targets: Array<{
+    ref: string | null;
+    box: { x: number; y: number; w: number; h: number } | null;
+    point?: { x: number; y: number };
+    scroll: { x: number; y: number };
+    viewport: { w: number; h: number };
+  }>;
+}> {
+  return await postBrowserJson(
+    baseUrl,
+    "/recorder/locate",
+    { targetId: opts.targetId, items: opts.items },
+    browserClientTimeout(baseUrl, undefined, 10000),
+    opts,
+  );
+}
+
 export async function browserEmulateSetting(
   baseUrl: BrowserClientTarget,
   opts: {
