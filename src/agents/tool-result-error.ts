@@ -9,6 +9,7 @@ import {
   consumeToolExecutionNotStarted,
   markToolExecutionNotStarted,
 } from "./tool-effect-receipt.js";
+import { readToolErrorDetails, withToolErrorDetails } from "./tool-error-details.js";
 import { isTrustedToolInputError } from "./tool-input-error.js";
 
 const TOOL_TIMEOUT_ERROR_CODES = new Set([
@@ -211,6 +212,12 @@ export function protectNetworkToolExecutionError(
     }
   } catch {
     // Hostile reflection must never replace the already-protected network error.
+  }
+  // Record-only details stay out of the model-facing text, so they carry over unwrapped for
+  // the tool adapter to put in the error result's details.
+  const details = readToolErrorDetails(error);
+  if (details) {
+    withToolErrorDetails(protectedError, details);
   }
   protectedNetworkToolErrors.add(protectedError);
   if (timedOut) {

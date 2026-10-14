@@ -184,6 +184,46 @@ describe("agent tool definition adapter", () => {
     expect(plain.details).toEqual({ status: "error", tool: "boom", error: "nope" });
   });
 
+  it("keeps details a network tool's failure carries through the protected error", async () => {
+    const networkTool = (error: () => Error) =>
+      wrapToolWithBeforeToolCallHook(
+        {
+          name: "boom",
+          label: "Boom",
+          description: "throws",
+          parameters: Type.Object({}),
+          resultContentSource: "network",
+          execute: async () => {
+            throw error();
+          },
+        } satisfies AgentTool,
+        undefined,
+        { emitDiagnostics: false },
+      );
+    const plain = await executeTool(
+      networkTool(() => new Error("covered")),
+      "call-network-plain",
+    );
+    const result = await executeTool(
+      networkTool(() =>
+        withToolErrorDetails(new Error("covered"), { recorder: { act: { elapsed_ms: 12 } } }),
+      ),
+      "call-network-details",
+    );
+
+    // The envelope's marker id is fresh per failure; the rest of the text must match.
+    const textOf = (r: typeof result) =>
+      (r.content[0] as { text: string }).text.replace(/[0-9a-f]{16}/g, "<id>");
+    expect(textOf(result)).toContain("EXTERNAL_UNTRUSTED_CONTENT");
+    expect(textOf(result)).toBe(textOf(plain));
+    expect(result.details).toMatchObject({
+      recorder: { act: { elapsed_ms: 12 } },
+      status: "error",
+      tool: "boom",
+    });
+    expect(plain.details).not.toHaveProperty("recorder");
+  });
+
   it("normalizes exec tool aliases in error results", async () => {
     const result = await executeThrowingTool("bash", "call2");
 
