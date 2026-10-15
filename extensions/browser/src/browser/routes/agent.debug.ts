@@ -145,6 +145,7 @@ export function registerBrowserAgentDebugRoutes(
         if (!buffer) {
           return { ...capture, path: null };
         }
+        // An own image: `shares` is false here by construction, the client reads `path` alone for it.
         await ensureMediaDir();
         const saved = await saveMediaBuffer(buffer, "image/png", "browser", buffer.byteLength);
         return { ...capture, path: nodePath.resolve(saved.path) };

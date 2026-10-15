@@ -320,7 +320,9 @@ export async function browserRecorderCapture(
   viewport: { w: number; h: number };
   page: { w: number; h: number };
   boxes: Record<string, { x: number; y: number; w: number; h: number } | null>;
+  /** The saved PNG; null with `shares` true for the page `unchanged` named, null alone for a raw document. */
   path: string | null;
+  shares: boolean;
 }> {
   return await postBrowserJson(
     baseUrl,

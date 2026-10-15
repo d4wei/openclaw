@@ -96,6 +96,7 @@ beforeEach(async () => {
         ]),
       ),
       path: png,
+      shares: false,
     };
   });
 });
@@ -383,6 +384,7 @@ describe("browser recorder", () => {
         viewport: { w: 1280, h: 720 },
         boxes: {},
         path: null,
+        shares: true,
       };
     });
     actions.browserPageText.mockResolvedValueOnce({
@@ -410,6 +412,7 @@ describe("browser recorder", () => {
         viewport: { w: 1280, h: 720 },
         boxes: {},
         path: null,
+        shares: true,
       };
     });
     await execute({ action: "snapshot", targetId: "t1" });
@@ -420,6 +423,35 @@ describe("browser recorder", () => {
     const changed = await readCapture("recorder/0004-snapshot");
     expect(changed.meta).not.toHaveProperty("image_from");
     await fs.access(path.join(stateDir, "recorder", "0004-snapshot", "page.png"));
+  });
+
+  it("writes a raw document's read with no image and no image_from", async () => {
+    enableRecorder();
+    await execute({ action: "snapshot", targetId: "t1" });
+    actions.browserRecorderCapture.mockImplementationOnce(async () => ({
+      ok: true,
+      targetId: "t1",
+      url: "https://shop.example/products.json",
+      title: "",
+      viewport: { w: 1280, h: 720 },
+      page: { w: 1280, h: 120_000 },
+      boxes: {},
+      path: null,
+      shares: false,
+    }));
+    actions.browserPageText.mockResolvedValueOnce({
+      ok: true,
+      targetId: "t1",
+      url: "https://shop.example/products.json",
+      text: "{}",
+      truncated: false,
+      untruncatedText: "{}",
+    });
+    await execute({ action: "text", targetId: "t1" });
+    expect(await readMeta("recorder/0002-text")).not.toHaveProperty("image_from");
+    await expect(
+      fs.access(path.join(stateDir, "recorder", "0002-text", "page.png")),
+    ).rejects.toThrow();
   });
 
   it("keeps the tool result when the capture fails", async () => {

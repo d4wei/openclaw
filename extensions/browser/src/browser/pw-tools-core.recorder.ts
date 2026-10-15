@@ -14,9 +14,16 @@ export type RecorderCapture = {
   viewport: { w: number; h: number };
   page: { w: number; h: number };
   boxes: Record<string, RecorderBox | null>;
-  /** The full-page PNG, or null when the page is the one `unchanged` named. */
+  /**
+   * The full-page PNG; null when the page is the one `unchanged` named (`shares` true), or when
+   * the document is not a web page (a JSON or XML file Chrome shows raw), which gets no image.
+   */
   buffer: Buffer | null;
+  shares: boolean;
 };
+
+/** Documents a capture pictures; anything else Chrome shows raw, tall and slow to picture. */
+const PAGE_CONTENT_TYPES = /^(text\/html|application\/xhtml\+xml)$/i;
 
 // A ref that resolves to nothing must not hold the capture for Playwright's default wait.
 const BOX_TIMEOUT_MS = 500;
@@ -58,6 +65,7 @@ export async function captureRecorderViaPlaywright(opts: {
       pageH: Math.max(root.scrollHeight, body?.scrollHeight ?? 0, root.clientHeight),
       title: document.title,
       url: location.href,
+      contentType: document.contentType,
     };
   });
   const boxes: Record<string, RecorderBox | null> = {};
@@ -101,14 +109,15 @@ export async function captureRecorderViaPlaywright(opts: {
     opts.unchanged.url === view.url &&
     opts.unchanged.page.w === view.pageW &&
     opts.unchanged.page.h === view.pageH;
-  const buffer = same
-    ? null
-    : await page.screenshot({
-        type: "png",
-        fullPage: true,
-        scale: "css",
-        timeout: SCREENSHOT_TIMEOUT_MS,
-      });
+  const buffer =
+    same || !PAGE_CONTENT_TYPES.test(view.contentType)
+      ? null
+      : await page.screenshot({
+          type: "png",
+          fullPage: true,
+          scale: "css",
+          timeout: SCREENSHOT_TIMEOUT_MS,
+        });
   return {
     url: view.url,
     title: view.title,
@@ -116,6 +125,7 @@ export async function captureRecorderViaPlaywright(opts: {
     page: { w: view.pageW, h: view.pageH },
     boxes,
     buffer,
+    shares: same,
   };
 }
 

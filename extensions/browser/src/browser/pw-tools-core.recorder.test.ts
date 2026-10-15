@@ -127,7 +127,7 @@ describe("recorder act targets", () => {
 
 describe("recorder capture", () => {
   /** A document 1280 by 9000 at shop.example, whose refs resolve to nothing. */
-  function installDocument() {
+  function installDocument(contentType = "text/html") {
     vi.stubGlobal("window", {
       visualViewport: { pageLeft: 0, pageTop: 0 },
       scrollX: 0,
@@ -144,6 +144,7 @@ describe("recorder capture", () => {
       },
       body: { scrollWidth: 1280, scrollHeight: 9000 },
       title: "Shop",
+      contentType,
     });
     vi.stubGlobal("location", { href: "https://shop.example/collections/all" });
     const page = {
@@ -159,8 +160,22 @@ describe("recorder capture", () => {
     const same = { url: "https://shop.example/collections/all", page: { w: 1280, h: 9000 } };
     const capture = await captureRecorderViaPlaywright({ ...target, refs: [], unchanged: same });
     expect(capture.buffer).toBeNull();
+    expect(capture.shares).toBe(true);
     expect(capture.page).toEqual({ w: 1280, h: 9000 });
     expect(page.screenshot).not.toHaveBeenCalled();
+  });
+
+  it("takes no image of a raw document such as a JSON or XML file, and shares none", async () => {
+    for (const contentType of ["application/json", "text/xml", "application/javascript"]) {
+      const page = installDocument(contentType);
+      const capture = await captureRecorderViaPlaywright({ ...target, refs: [] });
+      expect(capture.buffer).toBeNull();
+      expect(capture.shares).toBe(false);
+      expect(page.screenshot).not.toHaveBeenCalled();
+    }
+    const page = installDocument("application/xhtml+xml");
+    expect((await captureRecorderViaPlaywright({ ...target, refs: [] })).buffer).not.toBeNull();
+    expect(page.screenshot).toHaveBeenCalledTimes(1);
   });
 
   it("takes an image when the page or its size differs from the last capture, or none is named", async () => {
@@ -172,6 +187,7 @@ describe("recorder capture", () => {
     ]) {
       const capture = await captureRecorderViaPlaywright({ ...target, refs: [], unchanged });
       expect(capture.buffer?.toString()).toBe("png");
+      expect(capture.shares).toBe(false);
     }
     expect(page.screenshot).toHaveBeenCalledTimes(3);
     expect(page.screenshot.mock.calls[0]?.[0]).toMatchObject({ fullPage: true, scale: "css" });

@@ -100,6 +100,7 @@ const browserActionsMocks = vi.hoisted(() => ({
     page: { w: 1280, h: 720 },
     boxes: {},
     path: "/tmp/openclaw-media/recorder.png",
+    shares: false,
   })),
   browserRecorderHitTest: vi.fn(async (..._args: unknown[]): Promise<Record<string, unknown>> => ({
     ok: true,

@@ -252,8 +252,9 @@ export async function recordPageRead(params: {
       args: redactArgs(params.args),
       ...(params.filtered ? { received: RECEIVED_FILE } : {}),
       ...(outlineFull !== undefined ? { outline_full: OUTLINE_FULL_FILE } : {}),
-      // No image of its own: the page was the one `image_from` pictured, at the same URL and size.
-      ...(capture.path === null && last ? { image_from: last.dir } : {}),
+      // No image of its own: the page was the one `image_from` pictured, at the same URL and size. A raw
+      // document (JSON, XML) has no image at all and names none.
+      ...(capture.path === null && capture.shares && last ? { image_from: last.dir } : {}),
     };
     await Promise.all([
       fs.writeFile(path.join(dir, "outline.txt"), outline),
