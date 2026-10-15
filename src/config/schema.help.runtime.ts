@@ -54,6 +54,8 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
   "browser.recorder.enabled": "Enables the browser page-read recorder. Default: false.",
   "browser.recorder.capChars":
     "Character ceiling on page text one snapshot or text result hands the model, replacing the browser tool's default live-result ceiling. The snapshot service's own maxChars defaults and later agent-level result limits still apply.",
+  "browser.actTimeoutMs":
+    "How long one browser act (a click, a fill, a hover) waits before it fails, in milliseconds, when the request names no timeoutMs. Default: 60000.",
   "browser.tabCleanup":
     "Best-effort cleanup policy for browser tabs opened by primary-agent sessions. Keep enabled to avoid stale sandbox or managed-browser tabs accumulating across long-lived gateways.",
   "browser.tabCleanup.enabled":

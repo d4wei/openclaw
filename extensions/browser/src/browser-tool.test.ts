@@ -2557,3 +2557,33 @@ it.each([{ scopes: ["operator.write"] }, { scopes: ["operator.sessions.write"] }
     expect(client.browserTabs).not.toHaveBeenCalled();
   },
 );
+
+describe("act timeout", () => {
+  it("gives an act the tool's sixty seconds, or the seconds browser.actTimeoutMs names", async () => {
+    config.loadConfig.mockReturnValue({ browser: {} });
+    await execute({ action: "act", kind: "click", ref: "e1" });
+    expect(lastMockCallArg(actions.browserAct, 1)).toMatchObject({
+      kind: "click",
+      timeoutMs: 60_000,
+    });
+
+    config.loadConfig.mockReturnValue({ browser: { actTimeoutMs: 15_000 } });
+    await execute({ action: "act", kind: "click", ref: "e1" });
+    expect(lastMockCallArg(actions.browserAct, 1)).toMatchObject({
+      kind: "click",
+      timeoutMs: 15_000,
+    });
+    await execute({ action: "act", kind: "fill", ref: "e2", value: "x" });
+    expect(lastMockCallArg(actions.browserAct, 1)).toMatchObject({
+      kind: "fill",
+      timeoutMs: 15_000,
+    });
+
+    // A timeout the request names stands.
+    await execute({ action: "act", kind: "click", ref: "e1", timeoutMs: 5000 });
+    expect(lastMockCallArg(actions.browserAct, 1)).toMatchObject({
+      kind: "click",
+      timeoutMs: 5000,
+    });
+  });
+});

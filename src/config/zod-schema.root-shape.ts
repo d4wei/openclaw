@@ -122,6 +122,8 @@ export const OpenClawSchemaShape = {
           capChars: z.number().int().positive().optional(),
         })
         .optional(),
+      /** How long one act (a click, a fill) waits before it fails, when the request names no timeout. */
+      actTimeoutMs: z.number().int().positive().optional(),
       /** SSRF policy for browser navigation/open-tab operations. */
       ssrfPolicy: SsrFPolicyConfigSchema.optional(),
       profiles: z

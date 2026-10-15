@@ -16,13 +16,14 @@ import {
 import {
   browserAct,
   browserConsoleMessages,
-  browserRequests,
+  browserDownload,
+  browserEmulateSetting,
   browserErrors,
   browserPageText,
-  browserEmulateSetting,
-  browserDownload,
+  browserRequests,
   browserTabs,
   browserWaitForDownload,
+  getRuntimeConfig,
   jsonResult,
   normalizeOptionalString,
   readStringParam,
@@ -80,10 +81,18 @@ function withLocalActTimeout(
     case "fill":
     case "evaluate":
     case "wait":
-      return { ...request, timeoutMs: DEFAULT_BROWSER_ACTION_TIMEOUT_MS };
+      return { ...request, timeoutMs: defaultActTimeoutMs() };
     default:
       return request;
   }
+}
+
+/** The act timeout the config sets (`browser.actTimeoutMs`), else the tool's own. */
+function defaultActTimeoutMs(): number {
+  const configured = getRuntimeConfig().browser?.actTimeoutMs;
+  return typeof configured === "number" && Number.isSafeInteger(configured) && configured > 0
+    ? configured
+    : DEFAULT_BROWSER_ACTION_TIMEOUT_MS;
 }
 
 function formatAgentTab(tab: unknown): Record<string, unknown> {

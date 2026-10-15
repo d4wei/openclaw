@@ -27,6 +27,7 @@ export const BROWSER_FIELD_LABELS: Record<string, string> = {
   "browser.recorder": "Browser Recorder",
   "browser.recorder.enabled": "Browser Recorder Enabled",
   "browser.recorder.capChars": "Browser Page Read Cap (chars)",
+  "browser.actTimeoutMs": "Browser Act Timeout (ms)",
   "browser.tabCleanup": "Browser Tab Cleanup",
   "browser.tabCleanup.enabled": "Browser Tab Cleanup Enabled",
   "browser.ssrfPolicy": "Browser SSRF Policy",
