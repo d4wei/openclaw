@@ -5,13 +5,17 @@ import { BROWSER_REF_MARKER_ATTRIBUTE, withPageScopedCdpClient } from "./pw-sess
 
 export type RecorderBox = { x: number; y: number; w: number; h: number };
 
+/** The page the last capture pictured; while a page is still it, no new image is taken. */
+export type RecorderPageIdentity = { url: string; page: { w: number; h: number } };
+
 export type RecorderCapture = {
   url: string;
   title: string;
   viewport: { w: number; h: number };
   page: { w: number; h: number };
   boxes: Record<string, RecorderBox | null>;
-  buffer: Buffer;
+  /** The full-page PNG, or null when the page is the one `unchanged` named. */
+  buffer: Buffer | null;
 };
 
 // A ref that resolves to nothing must not hold the capture for Playwright's default wait.
@@ -32,6 +36,12 @@ export async function captureRecorderViaPlaywright(opts: {
    * those only in a full outline read beside the model's; measured over CDP instead.
    */
   nodes?: Readonly<Record<string, number>>;
+  /**
+   * The page the previous capture pictured. A page at the same URL and document size is
+   * taken as unchanged and gets no image: the full-page capture is the costly step of a
+   * read, and a visit reads one page several times (navigate, then text, then snapshot).
+   */
+  unchanged?: RecorderPageIdentity;
   signal?: AbortSignal;
 }): Promise<RecorderCapture> {
   const page = await getPageForTargetId(opts);
@@ -86,12 +96,19 @@ export async function captureRecorderViaPlaywright(opts: {
     }
   }
   opts.signal?.throwIfAborted();
-  const buffer = await page.screenshot({
-    type: "png",
-    fullPage: true,
-    scale: "css",
-    timeout: SCREENSHOT_TIMEOUT_MS,
-  });
+  const same =
+    opts.unchanged !== undefined &&
+    opts.unchanged.url === view.url &&
+    opts.unchanged.page.w === view.pageW &&
+    opts.unchanged.page.h === view.pageH;
+  const buffer = same
+    ? null
+    : await page.screenshot({
+        type: "png",
+        fullPage: true,
+        scale: "css",
+        timeout: SCREENSHOT_TIMEOUT_MS,
+      });
   return {
     url: view.url,
     title: view.title,

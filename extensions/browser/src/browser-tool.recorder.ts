@@ -26,6 +26,8 @@ const logger = createSubsystemLogger("browser");
 const RECORDER_DIR = "recorder";
 const RECEIVED_FILE = "received.txt";
 const OUTLINE_FULL_FILE = "outline-full.txt";
+const PAGE_FILE = "page.png";
+const META_FILE = "meta.json";
 // Core's tool adapter reads this registered symbol (src/agents/tool-error-details.ts) and
 // puts the record a failure carries in its error result's details, the error text unchanged.
 const TOOL_ERROR_DETAILS = Symbol.for("openclaw.toolErrorDetails");
@@ -101,6 +103,44 @@ function redactArgs(value: unknown, key = ""): unknown {
   return value;
 }
 
+/**
+ * The page the newest capture pictured, and the directory holding its image: a capture without
+ * an image of its own points at the one it shares through `image_from`.
+ */
+async function lastPictured(
+  root: string,
+): Promise<{ url: string; page: { w: number; h: number }; dir: string } | undefined> {
+  let names: string[];
+  try {
+    names = await fs.readdir(root);
+  } catch {
+    return undefined;
+  }
+  const newest = names
+    .map((name) => ({ name, n: Number.parseInt(name.slice(0, name.indexOf("-")), 10) }))
+    .filter((entry) => Number.isSafeInteger(entry.n))
+    .toSorted((a, b) => b.n - a.n)[0];
+  if (!newest) {
+    return undefined;
+  }
+  try {
+    const meta = JSON.parse(await fs.readFile(path.join(root, newest.name, META_FILE), "utf8")) as {
+      url?: unknown;
+      page?: { w?: unknown; h?: unknown };
+      image_from?: unknown;
+    };
+    const { url, page } = meta;
+    if (typeof url !== "string" || typeof page?.w !== "number" || typeof page?.h !== "number") {
+      return undefined;
+    }
+    const dir = typeof meta.image_from === "string" ? meta.image_from : newest.name;
+    await fs.access(path.join(root, dir, PAGE_FILE));
+    return { url, page: { w: page.w, h: page.h }, dir };
+  } catch {
+    return undefined;
+  }
+}
+
 async function allocateCaptureDir(root: string, action: string) {
   await fs.mkdir(root, { recursive: true });
   const taken = (await fs.readdir(root))
@@ -174,14 +214,16 @@ export async function recordPageRead(params: {
         refs.set(ref, identity);
       }
     }
+    const root = path.join(resolveStateDir(process.env), RECORDER_DIR);
+    const last = await lastPictured(root);
     const capture = await browserRecorderCapture(params.baseUrl, {
       targetId: params.targetId,
       profile: params.profile,
       signal: params.signal,
       refs: [...refs.keys()],
       ...(params.full?.nodes ? { nodes: params.full.nodes } : {}),
+      ...(last ? { unchanged: { url: last.url, page: last.page } } : {}),
     });
-    const root = path.join(resolveStateDir(process.env), RECORDER_DIR);
     const { n, name } = await allocateCaptureDir(root, params.action);
     const dir = path.join(root, name);
     const boxes: Record<string, RecorderBoxEntry> = {};
@@ -210,6 +252,8 @@ export async function recordPageRead(params: {
       args: redactArgs(params.args),
       ...(params.filtered ? { received: RECEIVED_FILE } : {}),
       ...(outlineFull !== undefined ? { outline_full: OUTLINE_FULL_FILE } : {}),
+      // No image of its own: the page was the one `image_from` pictured, at the same URL and size.
+      ...(capture.path === null && last ? { image_from: last.dir } : {}),
     };
     await Promise.all([
       fs.writeFile(path.join(dir, "outline.txt"), outline),
@@ -221,8 +265,8 @@ export async function recordPageRead(params: {
         path.join(dir, "boxes.json"),
         `${JSON.stringify({ url: capture.url, refs: boxes }, null, 1)}\n`,
       ),
-      fs.writeFile(path.join(dir, "meta.json"), `${JSON.stringify(meta, null, 1)}\n`),
-      moveFile(capture.path, path.join(dir, "page.png")),
+      fs.writeFile(path.join(dir, META_FILE), `${JSON.stringify(meta, null, 1)}\n`),
+      ...(capture.path !== null ? [moveFile(capture.path, path.join(dir, PAGE_FILE))] : []),
     ]);
     return details;
   } catch (err) {

@@ -132,14 +132,19 @@ export function registerBrowserAgentDebugRoutes(
               ),
             )
           : undefined;
+      const unchanged = readRecorderPageIdentity(input.unchanged);
       return async (pw, { cdpUrl, targetId, signal }) => {
         const { buffer, ...capture } = await pw.captureRecorderViaPlaywright({
           cdpUrl,
           targetId,
           refs,
           nodes,
+          unchanged,
           signal,
         });
+        if (!buffer) {
+          return { ...capture, path: null };
+        }
         await ensureMediaDir();
         const saved = await saveMediaBuffer(buffer, "image/png", "browser", buffer.byteLength);
         return { ...capture, path: nodePath.resolve(saved.path) };
@@ -219,4 +224,22 @@ export function registerBrowserAgentDebugRoutes(
       return { path: await pw.traceStopViaPlaywright({ cdpUrl, targetId, path: tracePath }) };
     };
   });
+}
+
+/** The `unchanged` page a capture request names: a URL and the document size, or nothing. */
+function readRecorderPageIdentity(
+  value: unknown,
+): { url: string; page: { w: number; h: number } } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const { url, page } = value as { url?: unknown; page?: unknown };
+  if (typeof url !== "string" || !page || typeof page !== "object" || Array.isArray(page)) {
+    return undefined;
+  }
+  const { w, h } = page as { w?: unknown; h?: unknown };
+  if (typeof w !== "number" || typeof h !== "number") {
+    return undefined;
+  }
+  return { url, page: { w, h } };
 }

@@ -8,7 +8,8 @@ import {
 } from "./pw-tools-core.test-harness.js";
 
 installPwToolsCoreTestHooks();
-const { locateRecorderTargetsViaPlaywright } = await import("./pw-tools-core.recorder.js");
+const { captureRecorderViaPlaywright, locateRecorderTargetsViaPlaywright } =
+  await import("./pw-tools-core.recorder.js");
 const target = { cdpUrl: "http://127.0.0.1:18792", targetId: "t1" };
 
 /** A fake element: its viewport rect and, when it carries one, its snapshot ref. */
@@ -121,5 +122,58 @@ describe("recorder act targets", () => {
       { ref: null, box: null, ...view },
       { ref: null, box: null, ...view },
     ]);
+  });
+});
+
+describe("recorder capture", () => {
+  /** A document 1280 by 9000 at shop.example, whose refs resolve to nothing. */
+  function installDocument() {
+    vi.stubGlobal("window", {
+      visualViewport: { pageLeft: 0, pageTop: 0 },
+      scrollX: 0,
+      scrollY: 0,
+      innerWidth: 1280,
+      innerHeight: 720,
+    });
+    vi.stubGlobal("document", {
+      documentElement: {
+        scrollWidth: 1280,
+        scrollHeight: 9000,
+        clientWidth: 1280,
+        clientHeight: 720,
+      },
+      body: { scrollWidth: 1280, scrollHeight: 9000 },
+      title: "Shop",
+    });
+    vi.stubGlobal("location", { href: "https://shop.example/collections/all" });
+    const page = {
+      evaluate: vi.fn(async (fn: (arg?: unknown) => unknown, arg?: unknown) => fn(arg)),
+      screenshot: vi.fn(async () => Buffer.from("png")),
+    };
+    setPwToolsCoreCurrentPage(page);
+    return page;
+  }
+
+  it("takes no image of the page the last capture pictured", async () => {
+    const page = installDocument();
+    const same = { url: "https://shop.example/collections/all", page: { w: 1280, h: 9000 } };
+    const capture = await captureRecorderViaPlaywright({ ...target, refs: [], unchanged: same });
+    expect(capture.buffer).toBeNull();
+    expect(capture.page).toEqual({ w: 1280, h: 9000 });
+    expect(page.screenshot).not.toHaveBeenCalled();
+  });
+
+  it("takes an image when the page or its size differs from the last capture, or none is named", async () => {
+    const page = installDocument();
+    for (const unchanged of [
+      undefined,
+      { url: "https://shop.example/", page: { w: 1280, h: 9000 } },
+      { url: "https://shop.example/collections/all", page: { w: 1280, h: 9600 } },
+    ]) {
+      const capture = await captureRecorderViaPlaywright({ ...target, refs: [], unchanged });
+      expect(capture.buffer?.toString()).toBe("png");
+    }
+    expect(page.screenshot).toHaveBeenCalledTimes(3);
+    expect(page.screenshot.mock.calls[0]?.[0]).toMatchObject({ fullPage: true, scale: "css" });
   });
 });

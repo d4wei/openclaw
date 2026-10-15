@@ -44,6 +44,11 @@ function innerPageText(text: string) {
   return text.slice(start, text.indexOf("\n<<<END_EXTERNAL_UNTRUSTED_CONTENT", start));
 }
 
+/** A capture's meta.json alone, for one that shares an earlier capture's image and has no page.png. */
+async function readMeta(dir: string) {
+  return JSON.parse(await fs.readFile(path.join(stateDir, dir, "meta.json"), "utf8"));
+}
+
 async function readCapture(dir: string) {
   const root = path.join(stateDir, dir);
   return {
@@ -361,6 +366,60 @@ describe("browser recorder", () => {
       received: "received.txt",
       args: { action: "text", selector: ".promo" },
     });
+  });
+
+  it("takes no new image of a page the last capture pictured, and names that capture", async () => {
+    enableRecorder();
+    await execute({ action: "snapshot", targetId: "t1" });
+    expect(actions.browserRecorderCapture.mock.calls[0]?.[1]).not.toHaveProperty("unchanged");
+    const pictured = { url: "https://shop.example/", page: { w: 1280, h: 20_000 } };
+    actions.browserRecorderCapture.mockImplementationOnce(async (...args: unknown[]) => {
+      expect(args[1]).toMatchObject({ unchanged: pictured });
+      return {
+        ok: true,
+        targetId: "t1",
+        ...pictured,
+        title: "Shop",
+        viewport: { w: 1280, h: 720 },
+        boxes: {},
+        path: null,
+      };
+    });
+    actions.browserPageText.mockResolvedValueOnce({
+      ok: true,
+      targetId: "t1",
+      url: "https://shop.example/",
+      text: "Free shipping",
+      truncated: false,
+      untruncatedText: "Free shipping",
+    });
+    await execute({ action: "text", targetId: "t1" });
+    expect(await readMeta("recorder/0002-text")).toMatchObject({ image_from: "0001-snapshot" });
+    await expect(
+      fs.access(path.join(stateDir, "recorder", "0002-text", "page.png")),
+    ).rejects.toThrow();
+
+    // A third read of the same page points at the capture that holds the image, not at the one without.
+    actions.browserRecorderCapture.mockImplementationOnce(async (...args: unknown[]) => {
+      expect(args[1]).toMatchObject({ unchanged: pictured });
+      return {
+        ok: true,
+        targetId: "t1",
+        ...pictured,
+        title: "Shop",
+        viewport: { w: 1280, h: 720 },
+        boxes: {},
+        path: null,
+      };
+    });
+    await execute({ action: "snapshot", targetId: "t1" });
+    expect(await readMeta("recorder/0003-snapshot")).toMatchObject({ image_from: "0001-snapshot" });
+
+    // A changed page gets its own image again.
+    await execute({ action: "snapshot", targetId: "t1" });
+    const changed = await readCapture("recorder/0004-snapshot");
+    expect(changed.meta).not.toHaveProperty("image_from");
+    await fs.access(path.join(stateDir, "recorder", "0004-snapshot", "page.png"));
   });
 
   it("keeps the tool result when the capture fails", async () => {
