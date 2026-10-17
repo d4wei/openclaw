@@ -19,6 +19,7 @@ import {
   browserRecorderLocate,
   getRuntimeConfig,
 } from "./browser-tool.runtime.js";
+import type { SnapshotQueryMatch } from "./browser-tool.snapshot-query.js";
 import { readRoleSnapshotLineIdentity } from "./browser/pw-role-snapshot.js";
 import { neutralizeMediaDirectives } from "./browser/vision.js";
 
@@ -190,6 +191,8 @@ export async function recordPageRead(params: {
    * page it was selected from was cut.
    */
   filtered?: { truncated: boolean };
+  /** Which way a snapshot query matched (`browser-tool.snapshot-query.ts`). */
+  queryMatch?: SnapshotQueryMatch;
   /**
    * The full tree read beside a narrowed snapshot mode, in the same refs; `nodes` gives
    * the DOM identity of refs the action cache does not hold, so they can be boxed too.
@@ -250,6 +253,7 @@ export async function recordPageRead(params: {
       viewport: capture.viewport,
       page: capture.page,
       args: redactArgs(params.args),
+      ...(params.queryMatch ? { query_match: params.queryMatch } : {}),
       ...(params.filtered ? { received: RECEIVED_FILE } : {}),
       ...(outlineFull !== undefined ? { outline_full: OUTLINE_FULL_FILE } : {}),
       // No image of its own: the page was the one `image_from` pictured, at the same URL and size. A raw

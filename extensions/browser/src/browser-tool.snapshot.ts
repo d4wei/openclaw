@@ -27,6 +27,7 @@ import {
   resolveRuntimeImageSanitization,
   wrapExternalContent,
 } from "./browser-tool.runtime.js";
+import { matchSnapshotQuery } from "./browser-tool.snapshot-query.js";
 import { DEFAULT_BROWSER_SNAPSHOT_TIMEOUT_MS } from "./browser/constants.js";
 import { finalizeRoleSnapshot, findRoleSnapshotLineRef } from "./browser/pw-role-snapshot.js";
 import { neutralizeMediaDirectives } from "./browser/vision.js";
@@ -337,7 +338,10 @@ export async function executeSnapshotAction(params: {
       ? { untruncated: snapshot.recorder.fullSnapshot, nodes: snapshot.recorder.fullNodes }
       : undefined;
   const recordRead = async (
-    copy: Pick<Parameters<typeof recordPageRead>[0], "received" | "capChars" | "filtered">,
+    copy: Pick<
+      Parameters<typeof recordPageRead>[0],
+      "received" | "capChars" | "filtered" | "queryMatch"
+    >,
   ) =>
     recorderSource !== undefined
       ? await recordPageRead({
@@ -354,7 +358,6 @@ export async function executeSnapshotAction(params: {
       : undefined;
   const query = normalizeOptionalString(input.query);
   if (query && !snapshot.blockedByDialog) {
-    const tokens = query.toLowerCase().split(/\s+/);
     const source =
       snapshot.format === "ai"
         ? snapshot.snapshot
@@ -364,21 +367,14 @@ export async function executeSnapshotAction(params: {
                 `- ${node.role} ${JSON.stringify(node.name)} [ref=${node.ref}]${node.value ? ` value=${JSON.stringify(node.value)}` : ""}${node.description ? ` description=${JSON.stringify(node.description)}` : ""}`,
             )
             .join("\n");
-    const matches = source.split("\n").filter((line) => {
-      const lower = line.toLowerCase();
-      return tokens.every((token) => lower.includes(token));
-    });
-    const matchedText = matches.join("\n");
-    const matchCount = matches.length;
-    const summary = matchCount
-      ? `${matchCount} matching line(s) in the returned snapshot${snapshot.truncated ? " (source truncated)" : ""}.`
-      : "No matching lines in the returned snapshot. Refine the query or take a broader snapshot.";
+    const matched = matchSnapshotQuery({ source, query, sourceTruncated: snapshot.truncated });
+    const matchCount = matched.lineCount;
     const wrapped = wrapBrowserExternalText({
-      value: matchedText,
+      value: matched.text,
       marker: BROWSER_EXTERNAL_JSON_TRUNCATION_MARKERS.snapshot,
       maxChars: maxChars ?? DEFAULT_AI_SNAPSHOT_MAX_CHARS,
       includeWarning: true,
-      prefix: summary,
+      prefix: matched.summary,
     });
     const snapshotRefs =
       snapshot.format === "ai"
@@ -395,6 +391,7 @@ export async function executeSnapshotAction(params: {
       received: wrapped.boundedText,
       capChars: wrapped.capChars,
       filtered: { truncated: snapshot.truncated || wrapped.truncated },
+      queryMatch: matched.match,
     });
     return await finishSnapshot(wrapped.text, {
       ok: snapshot.ok,

@@ -2492,6 +2492,103 @@ describe("browser observation actions and tab previews", () => {
       stats: { chars: 5, refs: 0 },
     });
   });
+
+  // A product page as the role outline lays it out: a named element's text repeats as a
+  // StaticText child line, and unnamed wrappers take lines of their own.
+  const PRODUCT_OUTLINE_LINES = [
+    '- heading "Ostrand Cleanser" [ref=e1] [level=1]',
+    '  - StaticText "Ostrand Cleanser"',
+    '- heading "Ingredients" [ref=e2] [level=2]',
+    '  - StaticText "Ingredients"',
+    "- paragraph",
+    '  - StaticText "Water, glycerin, cocamidopropyl betaine"',
+    '- heading "Claims" [ref=e3] [level=2]',
+    '  - StaticText "Claims"',
+    "- list",
+    "  - listitem",
+    '    - StaticText "Fragrance"',
+    "  - listitem",
+    '    - StaticText "Free of dyes"',
+    '- button "Add to cart" [ref=e4]',
+  ];
+
+  async function queryProductOutline(query: string, lines = PRODUCT_OUTLINE_LINES) {
+    client.browserSnapshot.mockResolvedValueOnce({
+      ok: true,
+      format: "ai",
+      targetId: "t1",
+      snapshot: lines.join("\n"),
+      refs: {
+        e1: { role: "heading", name: "Ostrand Cleanser" },
+        e2: { role: "heading", name: "Ingredients" },
+        e3: { role: "heading", name: "Claims" },
+        e4: { role: "button", name: "Add to cart" },
+      },
+    });
+    const result = await execute({ action: "snapshot", query });
+    const text = firstResultText(result);
+    const inner = text.slice(
+      text.indexOf("---\n") + 4,
+      text.indexOf("\n<<<END_EXTERNAL_UNTRUSTED_CONTENT"),
+    );
+    return { result, summary: text.slice(0, text.indexOf("\n")), inner };
+  }
+
+  it("returns a block of nearby lines when no one line holds every query word", async () => {
+    const { result, summary, inner } = await queryProductOutline("ingredients glycerin");
+
+    expect(summary).toBe(
+      "No single line holds every word; nearby lines hold them all, each word within 5 adjacent lines: 4 line(s) in 1 block(s) in the returned snapshot.",
+    );
+    expect(inner).toBe(PRODUCT_OUTLINE_LINES.slice(2, 6).join("\n"));
+    expect(result.details).toMatchObject({ matchCount: 4, refs: 1 });
+  });
+
+  it("keeps whole-line matches ahead of nearby blocks", async () => {
+    const { summary, inner } = await queryProductOutline("claims");
+
+    expect(summary).toBe("2 matching line(s) in the returned snapshot.");
+    expect(inner).toBe(PRODUCT_OUTLINE_LINES.slice(6, 8).join("\n"));
+  });
+
+  it("separates nearby blocks with a blank line and skips words further apart", async () => {
+    const twoBlocks = await queryProductOutline("fragrance dyes", [
+      ...PRODUCT_OUTLINE_LINES,
+      ...Array.from({ length: 5 }, (_, index) => `- link "Related ${index + 1}"`),
+      "- paragraph",
+      '  - StaticText "Fragrance"',
+      '  - StaticText "dyes"',
+    ]);
+    expect(twoBlocks.inner).toBe(
+      [
+        ...PRODUCT_OUTLINE_LINES.slice(10, 13),
+        "",
+        '  - StaticText "Fragrance"',
+        '  - StaticText "dyes"',
+      ].join("\n"),
+    );
+    expect(twoBlocks.summary).toContain("5 line(s) in 2 block(s)");
+    expect(twoBlocks.summary).toContain("a blank line between blocks");
+    expect(twoBlocks.result.details).toMatchObject({ matchCount: 5 });
+
+    // "Ostrand" opens the outline and "cart" closes it, more than five lines apart.
+    const apart = await queryProductOutline("ostrand cart");
+    expect(apart.summary).toMatch(/^Partial match/);
+  });
+
+  it("falls back to lines holding some query words, most words first, marked partial", async () => {
+    const { result, summary, inner } = await queryProductOutline(
+      "ingredients glycerin betaine sulfate",
+    );
+
+    expect(summary).toBe(
+      'Partial match: no line, and no 5 adjacent lines, in the returned snapshot hold all 4 words. 3 line(s) hold some of them, most first: 1 with 2 of 4, 2 with 1 of 4. On no line: "sulfate".',
+    );
+    expect(inner).toBe(
+      [PRODUCT_OUTLINE_LINES[5], PRODUCT_OUTLINE_LINES[2], PRODUCT_OUTLINE_LINES[3]].join("\n"),
+    );
+    expect(result.details).toMatchObject({ matchCount: 3, refs: 1 });
+  });
 });
 
 describe("resolveBrowserToolTimeoutMs", () => {

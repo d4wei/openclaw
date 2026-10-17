@@ -24,7 +24,7 @@ Use this skill when you need the `browser` tool for anything beyond a single pag
    - For “read the page and answer X,” use `action="text"` with optional `selector` and `maxChars` for bounded visible prose (first selector match, otherwise article/main/body). On existing-session profiles, use `snapshot` instead. Efficient snapshots omit most prose.
    - For virtualized lists, scroll through each segment, capture only the relevant rows, then merge the results.
    - Use `action="snapshot"` on the intended `targetId`.
-   - Add snapshot `query` to find lines containing all query tokens, ignoring case; matching lines keep their refs.
+   - Add snapshot `query` to find lines containing all query tokens, ignoring case; matching lines keep their refs. When no line holds every token, the result is blocks of nearby lines that hold them all together, or, failing that, lines holding only some tokens under a summary starting "Partial match": a partial line lacks a token, so it is not a full match.
    - Use the same `targetId` for follow-up actions so refs stay on the same tab.
    - For durable Playwright refs, request `refs="aria"` when supported. If you receive `axN` refs from `snapshotFormat="aria"`, use them only after that same snapshot call; stale or unbound `axN` refs fail fast and need a fresh snapshot.
    - Use `urls=true` when link text is ambiguous or a direct navigation target would avoid brittle clicks.

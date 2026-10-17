@@ -6,6 +6,7 @@ import {
   resolveBrowserToolCapabilities,
   type BrowserToolCapabilities,
 } from "./browser-tool.schema.js";
+import { SNAPSHOT_QUERY_WINDOW_LINES } from "./browser-tool.snapshot-query.js";
 import { resolveBrowserConfig, resolveProfile } from "./browser/config.js";
 import { getBrowserProfileCapabilities } from "./browser/profile-capabilities.js";
 
@@ -105,7 +106,7 @@ function describeBrowserTool(opts: {
     actions.has("text")
       ? "For page prose, use action=text with optional selector and maxChars; it reads the first selector match, else article, main, or body. Use efficient snapshots for controls; they omit most prose."
       : `For page text, use snapshot${evaluateEnabled ? " or a bounded act:evaluate" : ""}; efficient snapshots omit most prose.`,
-    "Use snapshot query to keep lines matching all whitespace-separated tokens, case-insensitively; matching lines retain element refs.",
+    `Use snapshot query to find lines by whitespace-separated words, case-insensitively; matching lines retain element refs. It returns the lines holding every word; when no line does, blocks of nearby lines that hold every word within ${SNAPSHOT_QUERY_WINDOW_LINES} adjacent lines; when no block does either, lines holding only some of the words, most first, under a summary starting "Partial match" that counts the words each line holds. Each partial line lacks at least one word, so it is not a full match.`,
     ...(actions.has("requests")
       ? [
           "Use requests for the recent network log; filter matches URL/type, limit defaults to 50, and clear=true clears the collected log after reading.",

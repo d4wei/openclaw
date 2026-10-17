@@ -21,7 +21,7 @@ const OUTLINE = OUTLINE_LINES.join("\n");
 
 let stateDir: string;
 
-/** The lines a snapshot query keeps: every whitespace token appears, case-insensitively. */
+/** The lines a snapshot query keeps when some line holds every word, case-insensitively. */
 function queryMatches(lines: string[], query: string) {
   const tokens = query.toLowerCase().split(/\s+/);
   return lines.filter((line) => tokens.every((token) => line.toLowerCase().includes(token)));
@@ -235,8 +235,46 @@ describe("browser recorder", () => {
       total_chars: OUTLINE.length,
       truncated: false,
       args: { action: "snapshot", query: "product 17 with" },
+      query_match: "line",
     });
     expect(Object.keys(capture.boxes.refs)).toHaveLength(OUTLINE_LINES.length);
+  });
+
+  it.each([
+    { query: "heading glycerin", match: "window", received: [1, 2, 3] },
+    { query: "glycerin sulfate", match: "some", received: [3] },
+    { query: "sulfate", match: "none", received: [] },
+  ])("notes a $match query match beside the query", async ({ query, match, received }) => {
+    enableRecorder();
+    const lines = [
+      '- link "Shop" [ref=e1]',
+      '- heading "Ingredients heading" [ref=e2]',
+      "- paragraph",
+      '  - StaticText "Water, glycerin"',
+      '- button "Add to cart" [ref=e3]',
+    ];
+    const outline = lines.join("\n");
+    client.browserSnapshot.mockResolvedValueOnce({
+      ok: true,
+      format: "ai",
+      targetId: "t1",
+      url: "https://shop.example/",
+      snapshot: outline,
+    });
+
+    await execute({ action: "snapshot", targetId: "t1", query });
+    const capture = await readCapture("recorder/0001-snapshot");
+
+    expect(capture.outline).toBe(outline);
+    expect(capture.received).toBe(received.map((index) => lines[index]).join("\n"));
+    expect(capture.meta).toMatchObject({ args: { query }, query_match: match });
+  });
+
+  it("notes no query match on an unfiltered read", async () => {
+    enableRecorder();
+    await execute({ action: "snapshot", targetId: "t1" });
+
+    expect((await readCapture("recorder/0001-snapshot")).meta).not.toHaveProperty("query_match");
   });
 
   it("marks a filtered capture truncated when the page it filtered was cut", async () => {
