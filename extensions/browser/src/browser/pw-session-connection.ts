@@ -1,5 +1,6 @@
 import { toErrorObject } from "openclaw/plugin-sdk/error-runtime";
 import { expectDefined } from "openclaw/plugin-sdk/expect-runtime";
+import { getRuntimeConfig } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { formatErrorMessage } from "openclaw/plugin-sdk/security-runtime";
 import type { SsrFPolicy } from "openclaw/plugin-sdk/security-runtime";
 import { normalizeOptionalString } from "openclaw/plugin-sdk/string-coerce-runtime";
@@ -51,6 +52,7 @@ import {
   normalizeCdpUrl,
   targetKey,
 } from "./pw-session-state.js";
+import { installWebBotAuth } from "./web-bot-auth.js";
 
 export { pageTargetInfo } from "./pw-session-page-target.js";
 
@@ -380,6 +382,13 @@ function observeContext(context: BrowserContext) {
     ensurePageState(page);
   }
   context.on("page", (page) => ensurePageState(page));
+  void installWebBotAuth(context, getRuntimeConfig().browser?.webBotAuth);
+}
+
+/** Every observed context's Web Bot Auth route in place, so no request goes out before it. */
+async function webBotAuthReady(browser: Browser): Promise<void> {
+  const config = getRuntimeConfig().browser?.webBotAuth;
+  await Promise.all(browser.contexts().map((context) => installWebBotAuth(context, config)));
 }
 
 /** Ensure shared Playwright browser-context state. */
@@ -525,9 +534,10 @@ export async function connectBrowser(
           markConnectionScopedBrowser(browser);
         }
         const connected: ConnectedBrowser = { browser, cdpUrl: normalized, onDisconnected, engine };
+        observeBrowser(browser);
+        await webBotAuthReady(browser);
         cachedByCdpUrl.set(normalized, connected);
         browser.on("disconnected", onDisconnected);
-        observeBrowser(browser);
         return connected;
       } catch (err) {
         lastErr = err;

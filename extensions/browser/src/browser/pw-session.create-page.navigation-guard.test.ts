@@ -297,7 +297,7 @@ describe("pw-session createPageViaPlaywright navigation guard", () => {
   });
   it("ignores already-handled route races during guarded navigation", async () => {
     const route = createMockRoute({
-      continue: vi.fn(async () => {
+      fallback: vi.fn(async () => {
         throw new Error("Route is already handled");
       }),
     });
@@ -306,7 +306,8 @@ describe("pw-session createPageViaPlaywright navigation guard", () => {
       return null;
     });
     expect((await create({ url: "https://example.com" })).targetId).toBe("TARGET_1");
-    expect(route.continue).toHaveBeenCalledTimes(1);
+    expect(route.fallback).toHaveBeenCalledTimes(1);
+    expect(route.continue).not.toHaveBeenCalled();
     expect(f.pageGoto).toHaveBeenCalledTimes(1);
     expect(f.pageClose).not.toHaveBeenCalled();
   });

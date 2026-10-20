@@ -56,6 +56,11 @@ export const RUNTIME_FIELD_HELP: Record<string, string> = {
     "Character ceiling on page text one snapshot or text result hands the model, replacing the browser tool's default live-result ceiling. The snapshot service's own maxChars defaults and later agent-level result limits still apply.",
   "browser.actTimeoutMs":
     "How long one browser act (a click, a fill, a hover) waits before it fails, in milliseconds, when the request names no timeoutMs. Default: 60000.",
+  "browser.webBotAuth":
+    "Signs every http(s) request the managed browser makes with Web Bot Auth (RFC 9421, draft-meunier-web-bot-auth-architecture): Signature-Agent, Signature-Input and Signature, for each request's own authority. The Ed25519 private key is read from the WEB_BOT_AUTH_KEY environment variable as base64 PKCS#8 DER; without it requests go unsigned and a warning is logged once.",
+  "browser.webBotAuth.signatureAgent":
+    "The operator's origin whose /.well-known/http-message-signatures-directory publishes the key, sent as the Signature-Agent header.",
+  "browser.webBotAuth.keyId": "The key's id (its JWK thumbprint) in that directory, sent as keyid.",
   "browser.tabCleanup":
     "Best-effort cleanup policy for browser tabs opened by primary-agent sessions. Keep enabled to avoid stale sandbox or managed-browser tabs accumulating across long-lived gateways.",
   "browser.tabCleanup.enabled":

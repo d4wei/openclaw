@@ -1,6 +1,7 @@
 /**
  * Browser tab listing, opening, labeling, and alias management for one profile.
  */
+import { getRuntimeConfig } from "openclaw/plugin-sdk/runtime-config-snapshot";
 import { sleepWithAbort } from "openclaw/plugin-sdk/runtime-env";
 import { resolveBrowserNavigationProxyMode } from "./browser-proxy-mode.js";
 import {
@@ -355,7 +356,9 @@ export function createProfileTabOps({ profile, state, runtime }: TabOpsDeps): Pr
     let createdTargetId: string | undefined;
     let closeCreatedPage: (() => Promise<void>) | undefined;
     try {
-      if (capabilities.usesPersistentPlaywright) {
+      // A tab a raw CDP call opens loads its first document before Playwright's interception
+      // attaches, so with Web Bot Auth configured the tab is opened through Playwright and signed.
+      if (capabilities.usesPersistentPlaywright || getRuntimeConfig().browser?.webBotAuth) {
         const mod = await getPwAiModule({ mode: "strict" });
         if (mod) {
           const page = await mod.createPageViaPlaywright({

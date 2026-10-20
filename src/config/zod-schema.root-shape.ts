@@ -124,6 +124,14 @@ export const OpenClawSchemaShape = {
         .optional(),
       /** How long one act (a click, a fill) waits before it fails, when the request names no timeout. */
       actTimeoutMs: z.number().int().positive().optional(),
+      /** Web Bot Auth: sign every request the managed browser makes; the key is WEB_BOT_AUTH_KEY. */
+      webBotAuth: z
+        .object({
+          signatureAgent: z.string().url(),
+          keyId: z.string().min(1),
+        })
+        .strict()
+        .optional(),
       /** SSRF policy for browser navigation/open-tab operations. */
       ssrfPolicy: SsrFPolicyConfigSchema.optional(),
       profiles: z

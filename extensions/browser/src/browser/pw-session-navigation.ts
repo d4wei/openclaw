@@ -137,9 +137,9 @@ export async function assertPageNavigationCompletedSafely(
   }
 }
 
-async function resumeRouteSafely(route: Route, method: "continue" | "fallback"): Promise<void> {
+async function resumeRouteSafely(route: Route): Promise<void> {
   try {
-    await route[method]();
+    await route.fallback();
   } catch (err) {
     if (!(err instanceof Error && err.message.includes("Route is already handled"))) {
       throw err;
@@ -292,7 +292,7 @@ export async function withPageNavigationRequestGuard<T>(
   const handleRoute = async (route: Route, request: Request) => {
     if (!classifyBrowserDocumentNavigationRequest(opts.page, request)) {
       try {
-        await resumeRouteSafely(route, "fallback");
+        await resumeRouteSafely(route);
       } catch (err) {
         recordGuardError(err);
         await stopGuardedRoute(route, false, err);
@@ -317,7 +317,7 @@ export async function withPageNavigationRequestGuard<T>(
       return;
     }
     try {
-      await resumeRouteSafely(route, "fallback");
+      await resumeRouteSafely(route);
     } catch (err) {
       recordGuardError(err);
       await stopGuardedRoute(route, true, err);
@@ -427,8 +427,9 @@ export async function gotoPageWithNavigationGuard(
       return;
     }
     const requestKind = classifyBrowserDocumentNavigationRequest(opts.page, request);
+    // Fall back, not continue, so a context route (the Web Bot Auth signer) still sees the request.
     if (!requestKind) {
-      await resumeRouteSafely(route, "continue");
+      await resumeRouteSafely(route);
       return;
     }
     try {
@@ -446,7 +447,7 @@ export async function gotoPageWithNavigationGuard(
       }
       throw err;
     }
-    await resumeRouteSafely(route, "continue");
+    await resumeRouteSafely(route);
   };
 
   try {
